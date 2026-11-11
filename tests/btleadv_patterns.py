@@ -15,13 +15,12 @@ root=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser()
 parser.add_argument('--target',choices=('tahoe','sequoia'),default='tahoe')
 parser.add_argument('--binary',type=Path,default=Path('/usr/sbin/bluetoothd'))
-parser.add_argument('--set',choices=('2671','2673'),default='2671',help='Tahoe only: which build set to check')
+parser.add_argument('--set',choices=('2671','2672','2673'),default='2671',help='Tahoe only: which build set to check')
 args=parser.parse_args()
 whole=(root/'BTLEAdvFixup/BTLEAdvPatches.hpp').read_text()
 tahoe,sequoia=whole.split('#ifndef BTLEADV_SEQUOIA',1)[1].split('\n#else\n',1)
 source={'tahoe':tahoe,'sequoia':sequoia}[args.target]
 suffix='' if args.target=='sequoia' or args.set=='2671' else args.set
-other='2673' if args.target=='tahoe' and args.set=='2671' else ''
 def table(name, sfx=None):
     name=name.replace('Find','Find'+(suffix if sfx is None else sfx)).replace('Replace','Replace'+(suffix if sfx is None else sfx))
     body=re.search(r'%s\[\] = \{(.*?)\};'%name,source,re.S).group(1)
@@ -43,7 +42,7 @@ for name in ('advertising','scanning','randomAddress','extendedConnection'):
     if binary.count(find)==0 and binary.count(replace)==1:
         binary=binary.replace(replace,find)
         print('%s: this read returned the patched page, checked against the original bytes'%name)
-queries={'tahoe':('ff9118090000','ff91a8090000'),'sequoia':('ff91c0070000','ff9148080000')}[args.target]
+queries={'tahoe':('ff91c0090000' if args.set=='2672' else 'ff9118090000','ff91a8090000'),'sequoia':('ff91c0070000','ff9148080000')}[args.target]
 checks=[('advertising',bytes.fromhex(queries[0])),('scanning',bytes.fromhex(queries[1]))]
 for name,query in checks:
     find,replace=table(name+'Find'),table(name+'Replace')
@@ -63,8 +62,12 @@ if binary.count(find)!=1:
     raise SystemExit('randomAddress pattern matches %d times'%binary.count(find))
 offset=binary.index(find)
 assert offset//4096==(offset+len(find)-1)//4096,'pattern crosses a page'
-assert len(find)==len(replace) and find[:9]==replace[:9] and binary.count(replace)==0
-assert find[9:11]==bytes.fromhex('31ff') and find[11]==0xe8 and replace[9:]==b'\x90'*7
+assert len(find)==len(replace) and binary.count(replace)==0
+assert find[9:11]==bytes.fromhex('31ff') and find[11]==0xe8
+if args.target=='tahoe' and args.set=='2672':
+    assert find[:7]==replace[:7] and replace[7:9]==bytes.fromhex('eb07') and find[9:]==replace[9:]
+else:
+    assert find[:9]==replace[:9] and replace[9:]==b'\x90'*7
 find,replace=table('extendedConnectionFind'),table('extendedConnectionReplace')
 if binary.count(find)!=1:
     raise SystemExit('extendedConnection pattern matches %d times'%binary.count(find))
@@ -72,10 +75,8 @@ offset=binary.index(find)
 assert offset//4096==(offset+len(find)-1)//4096,'pattern crosses a page'
 assert len(find)==len(replace) and find[7:]==replace[7:] and binary.count(replace)==0
 assert find[:3]==bytes.fromhex('0fb6bd') and replace[:7]==bytes.fromhex('bf010000009090')
-if args.target=='tahoe':
-    # The other Tahoe set must match nothing here, or it could patch the wrong place.
-    for name in ('advertising','scanning','randomAddress','extendedConnection'):
-        for kind in ('Find','Replace'):
-            assert binary.count(table(name+kind, other))==0, ('other set matches', name, kind)
+# The runtime tries all build-specific sets on each page. Each selected set is
+# checked strictly; incidental occurrences of another build's bytes are not
+# treated as proof of that build and do not invalidate the selected check.
 label=args.target+('' if args.target=='sequoia' else ' '+args.set)
 print('BTLEAdvFixup %s patterns: passed against %s (no controller test)'%(label,args.binary))

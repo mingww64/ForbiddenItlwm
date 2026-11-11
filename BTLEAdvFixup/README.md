@@ -13,3 +13,4 @@ Build it with `tools/build_btleadv.py`, as described in [docs/INSTALL.md](../doc
 ## License
 
 GPL-3.0-only. The HCI hook follows IntelBTPatcher (OpenIntelWireless/IntelBluetoothFirmware, GPL-3.0), and the page hook follows BlueToolFixup (acidanthera/BrcmPatchRAM). The full text is in [LICENSE](LICENSE).
+- Tahoe includes four-operation tables for 26.7.1 (25G241), 26.7.2 (25G332), and 26.7.3 (25G342). The USB/HCI ordering workaround remains unconditional for supported Intel Bluetooth devices; page signatures simply match the corresponding bluetoothd build.
