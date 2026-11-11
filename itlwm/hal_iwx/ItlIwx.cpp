@@ -16259,7 +16259,11 @@ iwx_newstate_task(void *psc)
     if (nstate <= ostate) {
         switch (ostate) {
             case IEEE80211_S_RUN:
-                if (awdlCoexProbe)
+                // Reassociation must not inherit a listener that is still owned by the
+                // previous station context.  Use the actual listener state rather than
+                // only the boot-time probe flag: an in-flight add or queue can survive
+                // the flag's intended lifetime and block the next association.
+                if (awdlCoexAdded || awdlCoexAddingGen == sc->sc_generation || awdlCoexTxStaAdded)
                     (void)that->awdlCoexListener(sc, false);
                 err = that->iwx_run_stop(sc);
                 if (err)
