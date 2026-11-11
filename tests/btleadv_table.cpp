@@ -13,6 +13,10 @@ int main() {
     assert(kPatches[9].find == randomAddressFind2672);
     assert(kPatches[10].find == extendedConnectionFind2672);
     assert(kPatches[11].find == scanningFind2672);
+    assert(!shouldApplyPatch(kPatches[8], "25G342"));
+    assert(!shouldApplyPatch(kPatches[8], ""));
+    assert(shouldApplyPatch(kPatches[8], "25G332"));
+    assert(shouldApplyPatch(kPatches[4], "25G342"));
     // 2672 shares three signatures with 2673, but the advertising query differs.
     assert(memcmp(advertisingFind2672, advertisingFind2673, sizeof(advertisingFind2672)) != 0);
     assert(memcmp(scanningFind2672, scanningFind2673, sizeof(scanningFind2672)) == 0);

@@ -14,6 +14,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 namespace BTLEAdv {
 #ifndef BTLEADV_SEQUOIA
 // je to the "unsupported" path, then "callq *0x918(%rcx)", the advertising sets query.
@@ -130,4 +131,13 @@ static const Patch kPatches[] = {
 #endif
 };
 #undef BTLEADV_PATCH
+inline bool shouldApplyPatch(const Patch &patch, const char *build) {
+#ifndef BTLEADV_SEQUOIA
+    // This signature also occurs in a different 25G342 function. Do not patch
+    // that unrelated site merely because its instruction bytes match.
+    if (patch.find == advertisingFind2672)
+        return build && strcmp(build, "25G332") == 0;
+#endif
+    return true;
+}
 }

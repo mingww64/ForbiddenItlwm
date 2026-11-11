@@ -13,6 +13,9 @@
 #include <IOKit/usb/IOUSBHostDevice.h>
 #include "BTLEAdvPatches.hpp"
 #include "BTLEAdvHci.hpp"
+#ifndef BTLEADV_SEQUOIA
+extern "C" char osversion[];
+#endif
 
 // Patches bluetoothd's pages as they're validated, the same way BlueToolFixup does.
 // Lilu's onProcLoad route was tried first and didn't apply to this process.
@@ -28,6 +31,9 @@ static void patched_cs_validate_page(vnode_t vp, memory_object_t pager, memory_o
         return;
     // Each set only matches its own bluetoothd build; on any other build nothing changes.
     for (const auto &patch : BTLEAdv::kPatches)
+#ifndef BTLEADV_SEQUOIA
+        if (BTLEAdv::shouldApplyPatch(patch, osversion))
+#endif
         if (!patch.scanningOnly || patchScanning)
             KernelPatcher::findAndReplace(const_cast<void *>(data), PAGE_SIZE, patch.find, patch.size,
                                           patch.replace, patch.size);
