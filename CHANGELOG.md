@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.3-test1 (test build)
+
+Two test flags for slow Mac → iPhone transfers (#22, #24). When the Mac's own Wi-Fi is on the same channel as the AirDrop listener (usually 149), the iPhone never accepts block ack, so frames go out one at a time. On any other channel it accepts within a second. These flags test two explanations; neither is on by default:
+
+- **`-itlawdlbaaskshared`:** in that case, send the block-ack request without waiting for the iPhone's window. The driver's window check held back thousands of requests there. `ITLAWDLCoexBaAsksShared` counts the requests sent this way.
+- **`-itlawdlhideinfra`:** leave the Mac's Wi-Fi network and channel out of AirDrop's sync frames (the infrastructure fields of the Data Path State TLV, as described by seemoo-lab/owl). The iPhone then sees a Mac that isn't on Wi-Fi. `ItlwmAWDLSyncInfraStripped` counts the frames changed.
+
+Workaround until one of them becomes the default: put your router (or the Mac's network) on a channel other than the listener's, for example 36–48 or 157.
+
 ## 0.5.2-test1 (test build)
 
 - **Channel 149 no longer lost to a passing world-mode country.** The card's firmware can briefly report its world code and then the same country again. The driver cleared its channel-149 beacon hints each time, so in China and Japan the listener fell back to channel 6 until it heard a network again (#21). The hints are now cleared only when a different country is learned.

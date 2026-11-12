@@ -8,7 +8,7 @@ ioreg -l -w0 | grep -E '"ItlwmAWDL(InterfaceBuild|BuildCheck)"|"ITLAWDLCoex(Adde
 
 | Key | Healthy value |
 | --- | --- |
-| `ItlwmAWDLInterfaceBuild` | `forbidden-0.5.2-test1`, `forbidden-0.5.2-test1-sequoia` or `forbidden-0.5.2-test1-sonoma` |
+| `ItlwmAWDLInterfaceBuild` | `forbidden-0.5.3-test1`, `forbidden-0.5.3-test1-sequoia` or `forbidden-0.5.3-test1-sonoma` |
 | `ItlwmAWDLBuildCheck` | `verified` (`expected: …` on a 15.8.x kernel that wasn't checked offline). Anything starting with `blocked` means AirDrop is off on this macOS build: see below |
 | `ITLAWDLCoexAdded` | Yes: the AirDrop listener exists |
 | `ITLAWDLCoexChannel`, `ITLAWDLCoexOwnWidth` | 149 and 80 |
@@ -61,7 +61,7 @@ This is the main known problem. The time goes into the iPhone finding the Mac's 
 
 - **Check the iPhone's Wi-Fi first.** AirDrop gets the share of the iPhone's radio time that its own Wi-Fi leaves over. If the iPhone isn't on Wi-Fi, or is on channel 149, it gets 15 of 16 slots (about 22 MB/s). On a quiet network on another channel it gets 11 (about 15 MB/s), on a busy one 7 (about 6 MB/s). `ITLAWDLCoexPeerPresentEntries` shows the current number.
 - **Check the channel:** on 6, everything is very slow. The listener can drop to 6 for a while when the firmware briefly loses the country (`ITLAWDLCoexCountryLearned` No).
-- **Mac → iPhone much slower than iPhone → Mac:** a known open problem on some setups (#22, #24): the iPhone never accepts block ack (`ITLAWDLCoexBaTxStateName` stays `asking`), so every frame goes out singly. It seems to happen when the Mac and the iPhone are on different Wi-Fi networks or channels.
+- **Mac → iPhone much slower than iPhone → Mac:** a known open problem on some setups (#22, #24): the iPhone never accepts block ack (`ITLAWDLCoexBaTxStateName` stays `asking`), so every frame goes out singly. It happens when the Mac's own Wi-Fi is on the same channel as the AirDrop listener (usually 149) (#24). **Workaround:** put your router (or the Mac's network) on another channel, such as 36–48 or 157; AirDrop stays on 149 and block ack then forms within a second. 0.5.3-test1 has two test flags for this case, `-itlawdlbaaskshared` and `-itlawdlhideinfra` (see [BOOT-FLAGS.md](BOOT-FLAGS.md)).
 - **Measure it:** `bash tools/compat/airdrop_measure.sh` prints the speed and connect times macOS logs for each transfer.
 - **The very first send after boot** is often slower while rate control settles.
 

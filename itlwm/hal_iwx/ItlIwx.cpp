@@ -5965,6 +5965,11 @@ static bool awdlCoexLostToRestart;
 // -itlawdlsameband (#16, test): while the station is on 2.4 GHz, keep the listener on channel 6, in the same
 // band, instead of time-sharing the radio across bands. Off by default until testers confirm it helps.
 static bool awdlCoexSameBand;
+// -itlawdlbaaskshared (test, #24): with the station's primary channel equal to the listener's, Block Ack
+// requests go out without waiting for the peer schedule's window. There the gate held back thousands of
+// requests and the agreement never formed; on any other station channel it formed within a second.
+static bool awdlCoexBaAskShared;
+static uint32_t awdlCoexBaAsksShared;
 // The usable country the beacon hints were gathered under (#21, and seen on the project machine): the
 // firmware's answer can drop to its world code and come back to the same country, and clearing the hints
 // each time sent the listener back to channel 6. Hints are now cleared only for a different usable country.
@@ -6311,6 +6316,8 @@ static void awdlCoexPublish()
     root->setProperty("ITLAWDLCoexFirmwareGeneration", uint32_t(awdlCoexGeneration), 32);
     root->setProperty("ITLAWDLCoexCountryUnusableAnswers", awdlCoexCountryUnusableAnswers, 32);
     root->setProperty("ITLAWDLCoexHintClears", awdlCoexHintClears, 32);
+    root->setProperty("ITLAWDLCoexBaAsksShared", awdlCoexBaAsksShared, 32);
+    root->setProperty("ITLAWDLCoexBaAskShared", awdlCoexBaAskShared);
     if (auto *seq = OSData::withBytes(awdlCoexPeerSeq, sizeof(awdlCoexPeerSeq))) {
         root->setProperty("ITLAWDLCoexPeerSequence", seq);
         seq->release();
@@ -8191,8 +8198,11 @@ awdlCoexBaHandle(struct iwx_softc *sc)
     awdlCoexBaTxRestUntilUS = 0;
     if (awdlCoexBaTxLastAskUS && askNow - awdlCoexBaTxLastAskUS < 200000ULL)
         return;
-    // A calibrated schedule can rule out this window. Otherwise keep the ordinary retry cadence.
-    if (awdlCoexScheduleCurrent() && awdlCoexPeerSchedule.shouldPause(askNow)) {
+    // A calibrated schedule can rule out this window. Otherwise keep the ordinary retry cadence. With
+    // -itlawdlbaaskshared and the station on the listener's own primary channel, the window isn't waited for.
+    const bool sharedPrimary = awdlCoexBaAskShared && sc->sc_ic.ic_bss && sc->sc_ic.ic_bss->ni_chan &&
+        ieee80211_chan2ieee(&sc->sc_ic, sc->sc_ic.ic_bss->ni_chan) == awdlCoexChannel;
+    if (!sharedPrimary && awdlCoexScheduleCurrent() && awdlCoexPeerSchedule.shouldPause(askNow)) {
         ++awdlCoexBaAsksSkippedAway;
         ++awdlCoexAskSkipsSinceLast;
         return;
@@ -8215,6 +8225,8 @@ awdlCoexBaHandle(struct iwx_softc *sc)
     if (askLength && awdlCoexSendMgmt(sc, ask, askLength, kCoexSlotBaAsk)) {
         awdlCoexBaTxLastAskUS = askNow;
         ++awdlCoexBaTxAsks;
+        if (sharedPrimary)
+            ++awdlCoexBaAsksShared;
         awdlCoexBaEvent('A', awdlCoexBaTxToken, awdlCoexBaTxSeq,
                         (awdlCoexBaFilterOff ? 1U : 0U) |
                         (awdlCoexScheduleCurrent() && awdlCoexPeerSchedule.known() &&
@@ -20126,6 +20138,7 @@ iwx_attach(struct iwx_softc *sc, struct pci_attach_args *pa)
         if (PE_parse_boot_argn("itlawdlbtcoex", &requestedCoexBt, sizeof(requestedCoexBt)))
             awdlBtCoexRequest = requestedCoexBt;
         awdlCoexSameBand = PE_parse_boot_argn("-itlawdlsameband", &dummy, sizeof(dummy));
+        awdlCoexBaAskShared = PE_parse_boot_argn("-itlawdlbaaskshared", &dummy, sizeof(dummy));
         awdlCoexMultiState = awdlCoexMulti ? "not-added" : "off";
         if (awdlCoexTx) {
             task_set(&awdlCoexTxTaskEntry, awdlCoexTxTask, sc, "awdlCoexTxTask");
