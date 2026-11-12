@@ -5957,6 +5957,38 @@ static CTimeout *awdlCoexTimer;
 static struct task awdlCoexTaskEntry;
 static int awdlCoexGeneration = -1;
 static uint32_t awdlCoexAdds, awdlCoexRemoves, awdlCoexMacResult, awdlCoexBindResult, awdlCoexBindStatus;
+// Why the listener was added again (#16): after a normal removal (the station left RUN and came back), or
+// after a firmware restart dropped it without a removal. A rising restart count means the firmware is
+// restarting under the listener, not that the driver re-adds it on purpose.
+static uint32_t awdlCoexAddsAfterRemove, awdlCoexAddsAfterRestart;
+static bool awdlCoexLostToRestart;
+// -itlawdlsameband (#16, test): while the station is on 2.4 GHz, keep the listener on channel 6, in the same
+// band, instead of time-sharing the radio across bands. Off by default until testers confirm it helps.
+static bool awdlCoexSameBand;
+// The usable country the beacon hints were gathered under (#21, and seen on the project machine): the
+// firmware's answer can drop to its world code and come back to the same country, and clearing the hints
+// each time sent the listener back to channel 6. Hints are now cleared only for a different usable country.
+static uint16_t awdlCoexHintCountry;
+static uint32_t awdlCoexCountryUnusableAnswers, awdlCoexHintClears;
+// The phone's latest 16-slot channel sequence (TLV 18), for diagnosis only (#24, #21): which channels it
+// spends its slots on. The parser follows PR #21 (zheznanohana). Nothing in the driver acts on it yet.
+static uint8_t awdlCoexPeerSeq[16];
+static uint32_t awdlCoexPeerSeqFrames, awdlCoexPeerSeqChanges;
+static bool awdlCoexPeerSequence(const uint8_t *frame, size_t length, uint8_t out[16])
+{
+    if (!frame || length < 40) return false;
+    for (size_t i = 40; i + 3 <= length;) {
+        const size_t value = size_t(frame[i + 1]) | size_t(frame[i + 2]) << 8;
+        if (i + 3 + value > length) return false;
+        if (frame[i] == 18) {
+            if (value < 6 + 32) return false;
+            for (unsigned n = 0; n < 16; ++n) out[n] = frame[i + 3 + 6 + 2 * n];
+            return true;
+        }
+        i += 3 + value;
+    }
+    return false;
+}
 static uint32_t awdlCoexAwdlAction, awdlCoexAwdlData, awdlCoexOther, awdlCoexChannel, awdlCoexPublished;
 // Data is handed to awdl0 only from a source heard sending valid AWDL action frames in the last 60 s
 // (iface129 review, 5). Addresses stay in memory only and are never published.
@@ -6274,6 +6306,17 @@ static void awdlCoexPublish()
     root->setProperty("ITLAWDLCoexAdded", awdlCoexAdded);
     root->setProperty("ITLAWDLCoexAdds", awdlCoexAdds, 32);
     root->setProperty("ITLAWDLCoexRemoves", awdlCoexRemoves, 32);
+    root->setProperty("ITLAWDLCoexAddsAfterRemove", awdlCoexAddsAfterRemove, 32);
+    root->setProperty("ITLAWDLCoexAddsAfterRestart", awdlCoexAddsAfterRestart, 32);
+    root->setProperty("ITLAWDLCoexFirmwareGeneration", uint32_t(awdlCoexGeneration), 32);
+    root->setProperty("ITLAWDLCoexCountryUnusableAnswers", awdlCoexCountryUnusableAnswers, 32);
+    root->setProperty("ITLAWDLCoexHintClears", awdlCoexHintClears, 32);
+    if (auto *seq = OSData::withBytes(awdlCoexPeerSeq, sizeof(awdlCoexPeerSeq))) {
+        root->setProperty("ITLAWDLCoexPeerSequence", seq);
+        seq->release();
+    }
+    root->setProperty("ITLAWDLCoexPeerSequenceFrames", awdlCoexPeerSeqFrames, 32);
+    root->setProperty("ITLAWDLCoexPeerSequenceUpdates", awdlCoexPeerSeqChanges, 32);
     root->setProperty("ITLAWDLCoexMacResult", awdlCoexMacResult, 32);
     root->setProperty("ITLAWDLCoexBindResult", awdlCoexBindResult, 32);
     root->setProperty("ITLAWDLCoexBindStatus", awdlCoexBindStatus, 32);
@@ -8828,6 +8871,18 @@ iwx_rx_frame(struct iwx_softc *sc, mbuf_t m, int chanidx,
                 const uint64_t heardUS = awdlUptimeUS();
                 const bool ourChannel = chanValid && unsigned(chanidx) == awdlCoexChannel;
                 const bool fromOwnAddr = awdlCoexAddrKnown && ItlAWDL::sameAddress(cf + 10, awdlCoexAddr);
+                if (!(cf[10] & 1) && !fromOwnAddr &&
+                    (!awdlCoexBaPeerAdded || ItlAWDL::sameAddress(cf + 10, awdlCoexBaPeer))) {
+                    uint8_t seq[16];
+                    if (awdlCoexPeerSequence(cf, coexLen, seq)) {
+                        ++awdlCoexPeerSeqFrames;
+                        if (memcmp(seq, awdlCoexPeerSeq, sizeof(seq))) {
+                            memcpy(awdlCoexPeerSeq, seq, sizeof(seq));
+                            ++awdlCoexPeerSeqChanges;
+                            awdlCoexPublish();
+                        }
+                    }
+                }
                 if (!(cf[10] & 1) && ourChannel && !fromOwnAddr) {
                     awdlCoexPeerHeard(cf + 10, heardUS);
                     // The phone's schedule, from its sync frames, as dedicated mode tracks it: its BA peer
@@ -15083,6 +15138,11 @@ awdlCoexPickOwn(struct iwx_softc *sc, uint8_t *width)
         awdlCoexBeaconHints = hints;
         awdlCoexPublish();
     }
+    if (awdlCoexSameBand && ic->ic_bss && ic->ic_bss->ni_chan && IEEE80211_IS_CHAN_2GHZ(ic->ic_bss->ni_chan) &&
+        usable(6)) {
+        *width = IWX_PHY_VHT_CHANNEL_MODE20;
+        return 6;
+    }
     if (awdlCoexWide80FailedGen != sc->sc_generation && (ic->ic_channels[149].ic_flags & IEEE80211_CHAN_VHT80)) {
         bool all = true;
         for (unsigned ch = 149; ch <= 161; ch += 4)
@@ -15123,9 +15183,18 @@ awdlCoexCountryAnswer(struct iwx_softc *sc)
         awdlCoexPublish();
         return;
     }
-    // Beacon hints belong to the old country's rules; Linux drops them on a regulatory change too.
-    if (mcc != awdlCoexCountryAnswered)
+    // Beacon hints belong to the old country's rules; Linux drops them on a regulatory change too. A
+    // detour through the firmware's world code isn't a change of country: the hints stay until a
+    // different usable country is answered. The firmware's own channel flags still apply on every use.
+    const bool usableCountry = ItlAWDL::countryNoticeUsable(mcc, source);
+    if (!usableCountry)
+        ++awdlCoexCountryUnusableAnswers;
+    else if (mcc != awdlCoexHintCountry) {
+        if (awdlCoexHintCountry)
+            ++awdlCoexHintClears;
         memset(sc->sc_ic.ic_beacon_hint, 0, sizeof(sc->sc_ic.ic_beacon_hint));
+        awdlCoexHintCountry = mcc;
+    }
     awdlCoexCountryAnswered = mcc;
     awdlCoexCountrySourceAnswered = source;
     awdlCoexCountryAnswerSeconds = mccUptimeSeconds();
@@ -15283,6 +15352,8 @@ awdlCoexListener(struct iwx_softc *sc, bool add)
         return EINVAL;
     if (awdlCoexGeneration != sc->sc_generation) {
         // A firmware restart dropped every context, ours included, and its station and queue.
+        if (awdlCoexAdded)
+            awdlCoexLostToRestart = true;
         awdlCoexAdded = false;
         awdlCoexTxStaAdded = false;
         awdlCoexInFlight = false;
@@ -15540,6 +15611,13 @@ awdlCoexListener(struct iwx_softc *sc, bool add)
         if (multi)
             awdlCoexMultiState = "own-channel";
 
+        if (awdlCoexAdds) {
+            if (awdlCoexLostToRestart)
+                ++awdlCoexAddsAfterRestart;
+            else
+                ++awdlCoexAddsAfterRemove;
+        }
+        awdlCoexLostToRestart = false;
         ++awdlCoexAdds;
         awdlCoexAddrApplied = awdlCoexAddrKnown;
         memcpy(awdlCoexAddrInFirmware, awdlCoexAddr, sizeof(awdlCoexAddrInFirmware));
@@ -20047,6 +20125,7 @@ iwx_attach(struct iwx_softc *sc, struct pci_attach_args *pa)
         int requestedCoexBt = -1;
         if (PE_parse_boot_argn("itlawdlbtcoex", &requestedCoexBt, sizeof(requestedCoexBt)))
             awdlBtCoexRequest = requestedCoexBt;
+        awdlCoexSameBand = PE_parse_boot_argn("-itlawdlsameband", &dummy, sizeof(dummy));
         awdlCoexMultiState = awdlCoexMulti ? "not-added" : "off";
         if (awdlCoexTx) {
             task_set(&awdlCoexTxTaskEntry, awdlCoexTxTask, sc, "awdlCoexTxTask");

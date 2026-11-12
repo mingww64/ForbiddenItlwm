@@ -1,7 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.5.2-test1 (test build)
 
+- **Channel 149 no longer lost to a passing world-mode country.** The card's firmware can briefly report its world code and then the same country again. The driver cleared its channel-149 beacon hints each time, so in China and Japan the listener fell back to channel 6 until it heard a network again (#21). The hints are now cleared only when a different country is learned.
+- **New diagnostics for the open reports:**
+  - `ITLAWDLCoexPeerSequence`: the iPhone's 16-slot channel schedule, while normal Wi-Fi is on (#21, #24). `…Frames` and `…Updates` count them.
+  - `ITLAWDLCoexAddsAfterRemove` and `ITLAWDLCoexAddsAfterRestart`: why the listener was added again, after Wi-Fi reconnected or after a firmware restart, plus `ITLAWDLCoexFirmwareGeneration` (#16).
+  - `ITLAWDLCoexCountryUnusableAnswers` and `ITLAWDLCoexHintClears`: how often the firmware's country drops to its world code, and how often hints are cleared.
+- **`-itlawdlsameband` (test flag, #16):** while the Mac's Wi-Fi is on 2.4 GHz, keep the listener on channel 6 instead of time-sharing the radio across bands. Off by default until testers confirm it helps.
+- **`tools/compat/airdrop_measure.sh`:** measures AirDrop speed and connect times in both directions from macOS's own AirDrop log, without a sysdiagnose.
+- **`check_compat.sh`** knows 15.8.1 runs a verified kernel, and lists the AX201, AX200, AX210 and AX411 class as reported working.
 - **Clearer diagnostic keys (#7).** `ITLAWDLCoexLastBuildResult` now resets after a successful frame build instead of keeping the error from before macOS sent its template. `ItlwmAWDLTransportReady` is gone: nothing ever set it, so it read No while AirDrop worked. `ItlwmAWDLDataCopyAttempts`/`Success` are only published with the `-itlawdldatacopy` probe.
 
 ## 0.5.1-test1 (test build)
