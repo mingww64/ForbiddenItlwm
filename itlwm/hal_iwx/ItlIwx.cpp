@@ -20039,6 +20039,11 @@ iwx_attach(struct iwx_softc *sc, struct pci_attach_args *pa)
                 coexCoalescing >= IWX_HOST_INT_TIMEOUT_MIN && coexCoalescing <= IWX_HOST_INT_TIMEOUT_MAX)
                 awdlIntCoalescing = uint8_t(coexCoalescing);
         }
+        // Bluetooth coexistence mode, for both AWDL modes (#19): it used to be read only inside the
+        // -itlawdlrx block below, so itlawdlbtcoex=1 did nothing beside normal Wi-Fi.
+        int requestedCoexBt = -1;
+        if (PE_parse_boot_argn("itlawdlbtcoex", &requestedCoexBt, sizeof(requestedCoexBt)))
+            awdlBtCoexRequest = requestedCoexBt;
         awdlCoexMultiState = awdlCoexMulti ? "not-added" : "off";
         if (awdlCoexTx) {
             task_set(&awdlCoexTxTaskEntry, awdlCoexTxTask, sc, "awdlCoexTxTask");

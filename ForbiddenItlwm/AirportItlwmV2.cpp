@@ -754,8 +754,23 @@ IOReturn ItlAWDLInterface::initializeNetwork(IO80211Controller *controller,
     const IOSkywalkPacketBufferPool::PoolOptions options = {
         128, 128, 2048, 1, 4096, 0, 0
     };
-    txPool = IOSkywalkPacketBufferPool::withName("itlwm-awdl-tx", this, 0, &txOptions);
-    rxPool = IOSkywalkPacketBufferPool::withName("itlwm-awdl-rx", this, 0, &options);
+    // Pool type: IOSkywalkFamily turns 0 into KBIF_QUANTUM and 2 into KBIF_BUFFER_ON_DEMAND. On Sequoia
+    // (XNU 11417) and Sonoma, a quantum pool gets quantum metadata, which nx_check_pp refuses for a network
+    // interface (EINVAL from kern_nexus_controller_alloc_net_provider_instance), so awdl0 was never attached
+    // (#7, #13, #16; found by #19 on 15.6). 1 makes a packet pool, as Apple's own drivers use. Tahoe keeps
+    // the 0 every Tahoe test ran with. itlawdlpooltype=0..2 overrides it for tests.
+#if __IO80211_TARGET == __MAC_15_2 || __IO80211_TARGET == __MAC_14_4
+    UInt32 poolType = 1;
+#else
+    UInt32 poolType = 0;
+#endif
+    int requestedPoolType = -1;
+    if (PE_parse_boot_argn("itlawdlpooltype", &requestedPoolType, sizeof(requestedPoolType)) &&
+        requestedPoolType >= 0 && requestedPoolType <= 2)
+        poolType = UInt32(requestedPoolType);
+    setProperty("ItlwmAWDLPoolType", poolType, 32);
+    txPool = IOSkywalkPacketBufferPool::withName("itlwm-awdl-tx", this, poolType, &txOptions);
+    rxPool = IOSkywalkPacketBufferPool::withName("itlwm-awdl-rx", this, poolType, &options);
     setProperty("ItlwmAWDLTxPoolPackets", txPoolPackets, 32);
     if (!txPool || !rxPool)
         return fail(kIOReturnNoMemory);

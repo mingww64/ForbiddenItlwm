@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1-test1 (test build)
+
+- **Sequoia: AirDrop transfers fixed (#7, #13, #16).** The driver created its AirDrop packet pools as "quantum" pools. Sequoia's kernel refuses those for a network interface, so `awdl0` was never created. Devices could see each other, but transfers stayed on "Waiting". The pools are now ordinary packet pools, as Apple's own drivers use. Found by liszsw241 in #19, who confirmed AirDrop both ways on 15.6 with this change. The 0.5.0 diagnostics on 15.8.1 and 15.8.2 point to the same failure. Not yet confirmed on 15.8.x itself.
+  - The Sonoma build gets the same change: Sonoma's kernel treats these pools the same way. Tahoe is unchanged.
+  - New key `ItlwmAWDLPoolType` (1 on Sequoia and Sonoma, 0 on Tahoe). `itlawdlpooltype=0`, `1` or `2` overrides it, for testing only.
+- **`itlawdlbtcoex` now works beside normal Wi-Fi (#19).** It was only read in the old monitor test mode.
+- BTLEAdvFixup is unchanged (0.9.0).
+
 ## 0.5.0-test1 (test build)
 
 - **macOS Sonoma 14.8.9, as its own kexts.** A third pair of kexts, for Sonoma, beside Tahoe and Sequoia.

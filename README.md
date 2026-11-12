@@ -8,11 +8,11 @@
 
 It supports macOS Tahoe 26.7.x and, from 0.3.0, macOS Sequoia 15.8.x. A test build adds macOS Sonoma 14.8.9. **Each macOS version has its own kexts:** download the ones for your macOS.
 
-> **Status: public beta. Newest release: 0.5.0-test1 (test build). Experimental.** The project tests on one machine with one card (Intel AX211) on macOS 26.7.1 (25G241): an HP Envy x360 13-bf with an iPhone 11. Users report AirDrop working on 26.7.2 and 26.7.3 too. **On Sequoia, testers report working Wi-Fi, but AirDrop transfers don't work yet** (#7, #13), and testers are needed. See [where it was tested](docs/TESTED-HARDWARE.md). Expect rough edges. Test it from a USB stick first, never from your only working EFI.
+> **Status: public beta. Newest release: 0.5.1-test1 (test build). Experimental.** The project tests on one machine with one card (Intel AX211) on macOS 26.7.1 (25G241): an HP Envy x360 13-bf with an iPhone 11. Users report AirDrop working on 26.7.2 and 26.7.3 too. **On Sequoia, AirDrop transfers didn't work up to 0.5.0** (#7, #13). 0.5.1-test1 has the fix, which a tester confirmed on 15.6 (#19); testers on 15.8.x are needed. See [where it was tested](docs/TESTED-HARDWARE.md). Expect rough edges. Test it from a USB stick first, never from your only working EFI.
 
 > **Check for new releases regularly.** Testers keep finding bugs, and fixes are released often. Before you report a problem, update to the newest version on the [releases page](https://github.com/retropineaple/ForbiddenItlwm/releases). To be notified, use **Watch → Custom → Releases** at the top of this page.
 
-> **[0.5.0-test1](https://github.com/retropineaple/ForbiddenItlwm/releases/tag/v0.5.0-test1)** is a test build. **It fixes Wi-Fi not starting on some machines with 0.4.0 and 0.4.1** (Wi-Fi off or greyed out), lets AirDrop use channel 149 where the firmware marks it passive, and adds macOS Sonoma 14.8.9 (checked offline only; Sonoma testers wanted). It was tested on the project's hackintosh on Tahoe. If it gives you trouble, 0.4.1-beta1 is the previous release.
+> **[0.5.1-test1](https://github.com/retropineaple/ForbiddenItlwm/releases/tag/v0.5.1-test1)** is a test build. **On Sequoia it fixes AirDrop transfers** (`awdl0` was never created). It includes 0.5.0-test1: the fix for Wi-Fi not starting on some machines with 0.4.0 and 0.4.1, channel 149 where the firmware marks it passive, and macOS Sonoma 14.8.9 (checked offline only; Sonoma testers wanted). If it gives you trouble, 0.4.1-beta1 is the previous beta.
 
 > **Update from any earlier version.** 0.4.0-beta1 fixed security bugs in every earlier release, including one in the Wi-Fi password handshake code that came from the original itlwm. **On Sequoia, also update BTLEAdvFixup to 0.8.3 (in 0.4.1-beta1):** earlier Sequoia builds never started. See the [changelog](CHANGELOG.md).
 
@@ -71,10 +71,10 @@ Tested with the same hackintosh and iPhone, on Tahoe 26.7.1:
   | Tahoe | 26.7.1 (25G241) | Tested on hardware |
   | Tahoe | 26.7.3 (25G342) | Reported working by a user (AX210). Wi-Fi side verified offline from Apple's Kernel Debug Kit, BTLEAdvFixup's patterns from Apple's installer |
   | Tahoe | 26.7.2 (25G332) | Reported working by a user (AX210). Wi-Fi side verified offline from Apple's Kernel Debug Kit. BTLEAdvFixup's patterns are the same bytes as 26.7.3's |
-  | Sequoia | 15.8 (24H23), 15.8.3 (24H241) | Wi-Fi side verified offline from Apple's Kernel Debug Kits, BTLEAdvFixup's patterns from Apple's installers. Users report Wi-Fi working; AirDrop transfers don't work yet ([#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13)) |
-  | Sequoia | 15.8.2 (24H232) | Same kernel as 15.8.3, so the build check passes. BTLEAdvFixup's patterns match. One user report (AX201): Wi-Fi works and each device lists the other, but transfers don't work yet ([issue #7](https://github.com/retropineaple/ForbiddenItlwm/issues/7)) |
+  | Sequoia | 15.8 (24H23), 15.8.3 (24H241) | Wi-Fi side verified offline from Apple's Kernel Debug Kits, BTLEAdvFixup's patterns from Apple's installers. Users report Wi-Fi working. AirDrop transfers didn't work up to 0.5.0 ([#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13)); 0.5.1-test1 has the fix |
+  | Sequoia | 15.8.2 (24H232) | Same kernel as 15.8.3, so the build check passes. BTLEAdvFixup's patterns match. One user report (AX201): Wi-Fi works and each device lists the other; transfers didn't work up to 0.5.0 ([issue #7](https://github.com/retropineaple/ForbiddenItlwm/issues/7)); 0.5.1-test1 has the fix |
   | Sequoia | 15.8.1 (24H32) | Expected to work (same kernel family), not checked offline. BTLEAdvFixup's patterns weren't checked, but match the builds before and after it |
-  | Sonoma | 14.8.9 (23J631) | Test build 0.5.0-test1. Wi-Fi side verified offline from Apple's Kernel Debug Kit, BTLEAdvFixup's patterns from Apple's installer. Not tested on hardware yet |
+  | Sonoma | 14.8.9 (23J631) | Test builds from 0.5.0-test1. Wi-Fi side verified offline from Apple's Kernel Debug Kit, BTLEAdvFixup's patterns from Apple's installer. Not tested on hardware yet |
   | Sonoma | Other 14.4 to 14.8.x builds | The Sonoma kext runs as plain Wi-Fi; AirDrop stays off |
   | Any other build | | AirDrop stays off and normal Wi-Fi works |
 
@@ -129,7 +129,7 @@ See **[docs/INSTALL.md](docs/INSTALL.md)**. In short:
 
 ## Known limitations
 
-- **Few macOS builds.** Tahoe 26.7.1 to 26.7.3, Sequoia 15.8 to 15.8.3, and Sonoma 14.8.9 in a test build. On any other build the driver keeps AirDrop off. Users report 26.7.2 and 26.7.3 working. **AirDrop transfers don't work on Sequoia yet:** Wi-Fi works and the devices list each other, but transfers stay on "Waiting" ([#7](https://github.com/retropineaple/ForbiddenItlwm/issues/7), [#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13)).
+- **Few macOS builds.** Tahoe 26.7.1 to 26.7.3, Sequoia 15.8 to 15.8.3, and Sonoma 14.8.9 in a test build. On any other build the driver keeps AirDrop off. Users report 26.7.2 and 26.7.3 working. **Sequoia AirDrop transfers need 0.5.1-test1:** up to 0.5.0, transfers stayed on "Waiting" ([#7](https://github.com/retropineaple/ForbiddenItlwm/issues/7), [#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13)). The fix is confirmed on 15.6 by a tester, not yet on 15.8.x.
 - **One card tested by the project.** Users have reported the AX201 and other AX211 machines working on Tahoe 26.7.1, the AX210 on 26.7.2 and 26.7.3, and the AX1690i on 26.7.2. Everything else is untested.
 - **Connects can be slow.** A cold iPhone → Mac connect usually takes 3 to 10 s, and sometimes longer: the time goes into the iPhone finding the Mac before any data moves. Mac → iPhone usually takes a few seconds, and now and then a first try fails while the Mac looks up the iPhone. This is the main open problem.
 - **Sleep isn't tested.** Sleep is disabled on the test machine.

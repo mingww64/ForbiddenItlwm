@@ -8,7 +8,7 @@ ioreg -l -w0 | grep -E '"ItlwmAWDL(InterfaceBuild|BuildCheck)"|"ITLAWDLCoex(Adde
 
 | Key | Healthy value |
 | --- | --- |
-| `ItlwmAWDLInterfaceBuild` | `forbidden-0.5.0-test1`, `forbidden-0.5.0-test1-sequoia` or `forbidden-0.5.0-test1-sonoma` |
+| `ItlwmAWDLInterfaceBuild` | `forbidden-0.5.1-test1`, `forbidden-0.5.1-test1-sequoia` or `forbidden-0.5.1-test1-sonoma` |
 | `ItlwmAWDLBuildCheck` | `verified`, or on Sequoia 15.8.1 `expected: macOS 15.8.x kernel not checked offline`. Anything starting with `blocked` means AirDrop is off on this macOS build: see below |
 | `ITLAWDLCoexAdded` | Yes: the AirDrop listener exists |
 | `ITLAWDLCoexChannel`, `ITLAWDLCoexOwnWidth` | 149 and 80 |
@@ -49,15 +49,7 @@ The firmware opens channel 149 only after a nearby network tells it the country.
 
 ## Sequoia: the devices list each other, but transfers stay on "Waiting"
 
-This is a known open problem on Sequoia ([#7](https://github.com/retropineaple/ForbiddenItlwm/issues/7), [#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13)). macOS never finishes setting up `awdl0`, so it never gives the driver the frame template it needs to send: `ItlwmAWDLSyncProbeStage` stays `snapshot-not-ready`, and `ifconfig awdl0` says the interface doesn't exist. From 0.5.0 the driver records what happens to the interface. Please add these to #13:
-
-```bash
-ifconfig awdl0
-```
-
-```bash
-ioreg -w0 -r -c ItlAWDLInterface -d 1 -l | grep -E 'ItlwmAWDLClientEvent|BSD Name'
-```
+Fixed in 0.5.1-test1 ([#7](https://github.com/retropineaple/ForbiddenItlwm/issues/7), [#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13), found in [#19](https://github.com/retropineaple/ForbiddenItlwm/issues/19)). Up to 0.5.0 the driver created its AirDrop packet pools in a mode that Sequoia's kernel refuses for a network interface, so `awdl0` was never created: `ifconfig awdl0` said the interface doesn't exist, and `ItlwmAWDLSyncProbeStage` stayed `snapshot-not-ready`. Update to 0.5.1-test1 or later. Then `ifconfig awdl0` should show the interface, and `ItlwmAWDLPoolType` should be 1.
 
 ## The first iPhone → Mac send is slow to connect, or sits on "Waiting"
 
