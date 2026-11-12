@@ -59,7 +59,7 @@ Users on Reddit and GitHub have reported:
 | Intel AX211, on other machines than the test laptop | macOS 26.7.1 |
 | Intel AX210 (desktop, Intel NUC8) | macOS 26.7.2, with 0.3.1-test1 (issue #8) |
 | Intel AX210 | macOS 26.7.3, with 0.3.1-test1 (issue #5) |
-| Intel AX201 | macOS Sequoia 15.8.2, with 0.3.0-beta1 and 0.4.1-beta1: Wi-Fi works; with 0.4.1 each device lists the other, but transfers don't work; with 0.5.0, `awdl0` is still never created (issue #7, fixed in 0.5.1) |
+| Intel AX201 | macOS Sequoia 15.8.2, with 0.3.0-beta1 and 0.4.1-beta1: Wi-Fi works; with 0.4.1 each device lists the other, but transfers don't work; with 0.5.0, `awdl0` is still never created; **with 0.5.1-test1, AirDrop works both ways** (issue #7) |
 | Intel AX201 | macOS Sequoia 15.8, with 0.4.1-beta1: Wi-Fi works; the iPhone lists the Mac, but transfers don't work (issue #13, fixed in 0.5.1) |
 | Intel AX201 (CNVi) | macOS Sequoia 15.8.3, with 0.3.0-beta1: Wi-Fi works, AirDrop transfers don't (fixed in 0.5.1). 0.4.x didn't start (issue #16, fixed in 0.5.0) |
 | Intel AX210 (AMD Ryzen 7 5700X desktop) | macOS 26.7.3, with 0.5.0-test1: Wi-Fi and AirDrop work, listener on 149 at 80 MHz (issue #14) |
@@ -72,7 +72,7 @@ The project hasn't verified these reports. The platforms, and which features wer
 
 - Other Intel cards, and other laptops with an AX211, beyond the user reports above
 - Other macOS builds, and 26.7.2 and 26.7.3 on the project's own hackintosh
-- **macOS Sequoia on the project's own hackintosh.** The Sequoia build was verified offline from the 15.8 and 15.8.3 Kernel Debug Kits, and in the user reports so far (above) Wi-Fi works. AirDrop transfers work on 15.6 with the 0.5.1 fix (#19), not yet confirmed on 15.8.x
+- **macOS Sequoia on the project's own hackintosh.** The Sequoia build was verified offline from the 15.8 and 15.8.3 Kernel Debug Kits, and in the user reports so far (above) Wi-Fi works. with 0.5.1-test1 users report AirDrop working both ways on 15.8.2 (#7) and 15.6 (#19)
 - **macOS Sonoma (test build).** Verified offline from the 14.8.9 Kernel Debug Kit; nobody has booted it yet
 - iPads, other iPhones, other Macs
 - Sleep and wake during a transfer, and long-term stability

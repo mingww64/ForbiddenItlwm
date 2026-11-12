@@ -1,6 +1,6 @@
 # Installing ForbiddenItlwm
 
-This beta has been tested on one hackintosh: an HP Envy x360 13-bf with an Intel AX211, on macOS 26.7.1 (25G241), booted with OpenCore 1.0.8, with an iPhone 11. Users report it working on 26.7.2 (25G332) and 26.7.3 (25G342). The Sequoia build (15.8.x) was verified offline. Users report Wi-Fi working on it. AirDrop transfers need 0.5.1-test1 or later, confirmed by a tester on 15.6, not yet on 15.8.x. The Sonoma build (14.8.9, test build) was verified offline only. The details are in [TESTED-HARDWARE.md](TESTED-HARDWARE.md). Read the whole page before you start.
+This beta has been tested on one hackintosh: an HP Envy x360 13-bf with an Intel AX211, on macOS 26.7.1 (25G241), booted with OpenCore 1.0.8, with an iPhone 11. Users report it working on 26.7.2 (25G332) and 26.7.3 (25G342). The Sequoia build (15.8.x) was verified offline. Users report Wi-Fi working on it. AirDrop needs 0.5.1-test1 or later; users confirmed it working on 15.8.2 and 15.6. The Sonoma build (14.8.9, test build) was verified offline only. The details are in [TESTED-HARDWARE.md](TESTED-HARDWARE.md). Read the whole page before you start.
 
 ## Before you start
 

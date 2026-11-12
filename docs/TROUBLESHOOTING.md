@@ -49,7 +49,9 @@ The firmware opens channel 149 only after a nearby network tells it the country.
 
 ## Sequoia: the devices list each other, but transfers stay on "Waiting"
 
-Fixed in 0.5.1-test1 ([#7](https://github.com/retropineaple/ForbiddenItlwm/issues/7), [#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13), found in [#19](https://github.com/retropineaple/ForbiddenItlwm/issues/19)). Up to 0.5.0 the driver created its AirDrop packet pools in a mode that Sequoia's kernel refuses for a network interface, so `awdl0` was never created: `ifconfig awdl0` said the interface doesn't exist, and `ItlwmAWDLSyncProbeStage` stayed `snapshot-not-ready`. Update to 0.5.1-test1 or later. Then `ifconfig awdl0` should show the interface, and `ItlwmAWDLPoolType` should be 1.
+Fixed in 0.5.1-test1 ([#7](https://github.com/retropineaple/ForbiddenItlwm/issues/7), [#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13), found in [#19](https://github.com/retropineaple/ForbiddenItlwm/issues/19)). Up to 0.5.0 the driver created its AirDrop packet pools in a mode that Sequoia's kernel refuses for a network interface, so `awdl0` was never created: `ifconfig awdl0` said the interface doesn't exist, and `ItlwmAWDLSyncProbeStage` stayed `snapshot-not-ready`. Update to 0.5.1-test1 or later. Then `ifconfig awdl0` should show the interface, and `ItlwmAWDLPoolType` should be 1. Confirmed working on 15.8.2 (#7) and 15.6 (#19).
+
+**Which keys show it works:** `ifconfig awdl0` lists the interface, `ItlwmAWDLClientEvents` has an `open` and a `prepare-bsd` but no `close`, `ItlwmAWDLSyncProbeStage` is `frame-built`, and `ITLAWDLCoexTxSubmitted` and `ItlwmAWDLDataDelivered` rise. Up to 0.5.1, three keys looked like failures even when it worked: `ItlwmAWDLTransportReady` (always No), `ITLAWDLCoexLastBuildResult` (kept the error from before macOS sent its template) and `ItlwmAWDLDataCopyAttempts`/`Success` (only count an optional probe). Ignore them.
 
 ## The first iPhone → Mac send is slow to connect, or sits on "Waiting"
 

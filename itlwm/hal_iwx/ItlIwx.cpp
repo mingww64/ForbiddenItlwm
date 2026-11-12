@@ -15766,6 +15766,9 @@ awdlCoexTxSend(struct iwx_softc *sc)
         return;
     }
     ++awdlCoexTxBuilt;
+    // The last result describes the latest attempt: a success clears the not-ready result from before
+    // macOS sent its template, which otherwise read as a failure while frames were going out (#7).
+    awdlCoexLastBuildResult = kIOReturnSuccess;
     const uint8_t *frame = static_cast<const uint8_t *>(mbuf_data(packet));
     // The firmware ACKs only its context's address, so that has to be the one macOS sends from. The wanted
     // address and the one the firmware has are kept apart; nothing goes out until they match.

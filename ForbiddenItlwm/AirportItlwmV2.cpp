@@ -721,10 +721,14 @@ IOReturn ItlAWDLInterface::initializeNetwork(IO80211Controller *controller,
     // -itlawdlcoexdata (normal Wi-Fi with the listener) needs delivery, transmit and the queues enabled too.
     const bool coexData = PE_parse_boot_argn("-itlawdlcoexdata", &dataCopyArgument, sizeof(dataCopyArgument));
     dataDeliverEnabled = coexData || PE_parse_boot_argn("-itlawdldatarx", &dataCopyArgument, sizeof(dataCopyArgument));
-    setProperty("ItlwmAWDLDataCopyAttempts", uint64_t(0), 32);
-    setProperty("ItlwmAWDLDataCopySuccess", uint64_t(0), 32);
+    // The copy counters belong to the -itlawdldatacopy probe; published as zeros without it, they read as a
+    // failure next to working delivery (#7). ItlwmAWDLTransportReady was never set true by anything and is
+    // no longer published; ItlwmAWDLDataDelivered and the TX counters show the real state.
+    if (dataCopyProbeEnabled) {
+        setProperty("ItlwmAWDLDataCopyAttempts", uint64_t(0), 32);
+        setProperty("ItlwmAWDLDataCopySuccess", uint64_t(0), 32);
+    }
     setProperty("ItlwmAWDLConfigurationMode", "requested-only");
-    setProperty("ItlwmAWDLTransportReady", false);
     stage("starting");
     if (!IO80211AWDLProtocol::start(controller)) {
         stage("native-start-failed");
