@@ -1,60 +1,49 @@
-import unittest
-from pathlib import Path
+"""Compile the real listener, TX teardown and state task against host gate/firmware stubs.
 
-from tools.awdl_reconnect_recovery import AWDLRecoveryModel
+Tests bookkeeping and ordering, not firmware or radio behavior.
+"""
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+root = Path(__file__).resolve().parents[1]
 
 
 class AWDLReconnectRecoveryTests(unittest.TestCase):
-    def test_driver_stops_owned_listener_before_reassociation(self):
-        source = (Path(__file__).resolve().parents[1] / "itlwm/hal_iwx/ItlIwx.cpp").read_text()
-        self.assertIn(
-            "awdlCoexAdded || awdlCoexAddingGen == sc->sc_generation || awdlCoexTxStaAdded",
-            source,
-        )
-
-    def test_run_to_auth_stops_listener_once(self):
-        model = AWDLRecoveryModel(listener_active=True)
-
-        model.on_state_change("RUN", "AUTH", 7)
-        model.on_state_change("AUTH", "ASSOC", 7)
-
-        self.assertEqual(model.stop_count, 1)
-        self.assertFalse(model.listener_active)
-
-    def test_failed_retry_does_not_start_listener(self):
-        model = AWDLRecoveryModel(listener_active=True)
-        model.on_state_change("RUN", "AUTH", 7)
-
-        model.on_state_change("AUTH", "AUTH", 8)
-        model.on_state_change("AUTH", "ASSOC", 8)
-
-        self.assertEqual(model.start_count, 0)
-        self.assertFalse(model.listener_active)
-
-    def test_return_to_run_starts_listener_once(self):
-        model = AWDLRecoveryModel(listener_active=True)
-        model.on_state_change("RUN", "AUTH", 7)
-        model.on_state_change("AUTH", "ASSOC", 7)
-        model.on_state_change("ASSOC", "RUN", 7)
-        model.on_state_change("RUN", "RUN", 7)
-
-        self.assertEqual(model.start_count, 1)
-        self.assertTrue(model.listener_active)
-
-    def test_stale_generation_is_ignored(self):
-        model = AWDLRecoveryModel(listener_active=True)
-        model.on_state_change("RUN", "AUTH", 7)
-        model.on_state_change("AUTH", "RUN", 6)
-
-        self.assertEqual(model.start_count, 0)
-        self.assertFalse(model.listener_active)
-
-    def test_run_to_run_is_noop(self):
-        model = AWDLRecoveryModel(listener_active=True)
-        model.on_state_change("RUN", "RUN", 7)
-
-        self.assertEqual(model.stop_count, 0)
-        self.assertEqual(model.start_count, 0)
+    def test_compiled_driver(self):
+        source = (root / "itlwm/hal_iwx/ItlIwx.cpp").read_text()
+        bodies = []
+        for signature in ("int ItlIwx::\nawdlCoexListener(",
+                          "int ItlIwx::\nawdlCoexTxSetup(",
+                          "int ItlIwx::\nawdlCoexTxTeardown(",
+                          "void ItlIwx::\niwx_newstate_task("):
+            start = source.index(signature)
+            end = source.index("\n}\n", start) + 3
+            bodies.append(source[start:end])
+        harness = (root / "tests/awdl_reconnect_recovery_host.cpp").read_text()
+        program = harness.replace("// DRIVER_IMPLEMENTATIONS", "\n".join(bodies))
+        with tempfile.TemporaryDirectory(prefix="forbiddenitlwm-reconnect-") as directory:
+            src = Path(directory) / "test.cpp"
+            src.write_text(program)
+            output = Path(directory) / "test"
+            subprocess.run(["xcrun", "clang++", "-std=c++14", "-pthread",
+                            "-fsanitize=address,undefined", str(src), "-o", str(output)], check=True)
+            for case in ("tx-only", "add-wait", "add-rollback-failure", "add-timeout", "add-restart",
+                         "remove-wait", "timeout", "restart", "remove-restart",
+                         "rollback-failure", "normal", "equal-run", "no-owner", "tx-failure",
+                         "setup-sta", "setup-sta-failure", "setup-sta-restart", "setup-sta-timeout",
+                         "setup-sta-shutdown", "setup-queue", "setup-queue-failure",
+                         "setup-queue-restart", "setup-queue-timeout", "setup-queue-shutdown",
+                         "setup-queue-negative", "transition-run-stop", "transition-deauth",
+                         "transition-auth", "transition-commit",
+                         "transition-run", "transition-run-stop-failure", "transition-deauth-failure",
+                         "transition-run-stop-restart", "transition-deauth-restart",
+                         "transition-run-stop-owner",
+                         "transition-run-stop-shutdown", "transition-deauth-shutdown"):
+                with self.subTest(case=case):
+                    result = subprocess.run([str(output), case], capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

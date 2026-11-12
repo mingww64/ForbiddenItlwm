@@ -31,6 +31,7 @@ with tempfile.TemporaryDirectory(prefix="forbiddenitlwm-tests-") as directory:
 subprocess.run(["python3", str(root / "tests/monitor_tx_ownership.py")], check=True)
 subprocess.run(["python3", str(root / "tests/monitor_channel.py")], check=True)
 subprocess.run(["python3", str(root / "tests/monitor_probe.py")], check=True)
+subprocess.run(["python3", str(root / "tests/awdl_reconnect_recovery.py")], check=True)
 subprocess.run(["python3", str(root / "tests/btleadv_patterns.py")], check=True)
 # The Sonoma set needs a 14.8.9 bluetoothd. Point this at one to check it.
 if os.environ.get("FORBIDDEN_SONOMA_BLUETOOTHD"):
