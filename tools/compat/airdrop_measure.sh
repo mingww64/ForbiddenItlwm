@@ -31,7 +31,7 @@ PRED='process == "sharingd" AND (category == "AirDropNW" OR category == "Metrics
 
 driver_state() {
     # One line of the listener's state, or nothing when the AirDrop build isn't running.
-    ioreg -l -w0 -d 1 -k ITLAWDLCoexChannel 2>/dev/null | awk -F' = ' '
+    { ioreg -l -w0 -d 1 -k ITLAWDLCoexChannel; ioreg -l -w0 -r -c ItlAWDLInterface -d 1; } 2>/dev/null | awk -F' = ' '
         /"ITLAWDLCoexChannel"/ {ch=$2} /"ITLAWDLCoexOwnWidth"/ {w=$2}
         /"ITLAWDLCoexBaTxStateName"/ {gsub(/"/,"",$2); ba=$2}
         /"ITLAWDLCoexPeerPresentEntries"/ {pe=$2}
