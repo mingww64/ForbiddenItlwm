@@ -72,9 +72,17 @@ static_assert(sizeof(extendedConnectionFind2673) == sizeof(extendedConnectionRep
 // runtime). Its advertising, scanning and randomAddress sites are byte-identical to 26.7.3's
 // and are covered by the 26.7.3 set above. Only the extendedConnection site differs: the
 // chipset byte moved from [rdi-0xa2] to [rdi-0x8a] and the setter call displacement changed.
-// Verified unique in the installed 25G332 bluetoothd (single page, offset 0x510f6c).
-static const uint8_t extendedConnectionFind2672[] = {0x0f,0xb6,0xbd,0x76,0xff,0xff,0xff,0xe8,0x1f,0x3a,0xd1,0xff};
-static const uint8_t extendedConnectionReplace2672[] = {0xbf,0x01,0x00,0x00,0x00,0x90,0x90,0xe8,0x1f,0x3a,0xd1,0xff};
+// The window keeps the two movzx before the site and the lea after it, so this build is
+// identified by the bytes alone, with no build string. Verified unique in the installed
+// 25G332 bluetoothd (single page, offset 0x510f6c).
+static const uint8_t extendedConnectionFind2672[] = {
+    0x0f,0xb6,0xf8, 0x41,0x0f,0xb6,0xf4, 0xe8,0x86,0xa0,0xcf,0xff,
+    0x0f,0xb6,0xbd,0x76,0xff,0xff,0xff, 0xe8,0x1f,0x3a,0xd1,0xff,
+    0x48,0x8d,0x05,0xf9,0x19,0x64,0x00, 0x4c,0x8b,0x20 };
+static const uint8_t extendedConnectionReplace2672[] = {
+    0x0f,0xb6,0xf8, 0x41,0x0f,0xb6,0xf4, 0xe8,0x86,0xa0,0xcf,0xff,
+    0xbf,0x01,0x00,0x00,0x00,0x90,0x90, 0xe8,0x1f,0x3a,0xd1,0xff,
+    0x48,0x8d,0x05,0xf9,0x19,0x64,0x00, 0x4c,0x8b,0x20 };
 static_assert(sizeof(extendedConnectionFind2672) == sizeof(extendedConnectionReplace2672), "patch size");
 #elif defined(BTLEADV_SEQUOIA)
 // macOS 15.8.3 (24H241); 15.8 (24H23) and 15.8.2 (24H232) match too. The capability queries are "callq *0x7c0(%rcx)" (advertising sets) and
@@ -154,13 +162,4 @@ static const Patch kPatches[] = {
 #endif
 };
 #undef BTLEADV_PATCH
-inline bool shouldApplyPatch(const Patch &patch, const char *build) {
-#if !defined(BTLEADV_SEQUOIA) && !defined(BTLEADV_SONOMA)
-    // This setter-call signature could occur in a different function on other builds. Do
-    // not patch an unrelated site merely because its instruction bytes match.
-    if (patch.find == extendedConnectionFind2672)
-        return build && strcmp(build, "25G332") == 0;
-#endif
-    return true;
-}
 }

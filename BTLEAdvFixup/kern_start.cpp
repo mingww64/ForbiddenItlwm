@@ -18,8 +18,6 @@
 // Lilu's onProcLoad route was tried first and didn't apply to this process.
 static mach_vm_address_t orig_cs_validate {};
 static bool patchScanning {};
-// The kernel-exported OS build string ("25G332" and friends), for build-gated patches.
-extern "C" const char osversion[];
 
 static void patched_cs_validate_page(vnode_t vp, memory_object_t pager, memory_object_offset_t page_offset,
                                      const void *data, int *validated_p, int *tainted_p, int *nx_p) {
@@ -30,7 +28,7 @@ static void patched_cs_validate_page(vnode_t vp, memory_object_t pager, memory_o
         return;
     // Each set only matches its own bluetoothd build; on any other build nothing changes.
     for (const auto &patch : BTLEAdv::kPatches)
-        if ((!patch.scanningOnly || patchScanning) && BTLEAdv::shouldApplyPatch(patch, osversion))
+        if (!patch.scanningOnly || patchScanning)
             KernelPatcher::findAndReplace(const_cast<void *>(data), PAGE_SIZE, patch.find, patch.size,
                                           patch.replace, patch.size);
 }
@@ -180,10 +178,7 @@ static IOReturn patched_device_request(void *that, IOService *provider, Standard
 // The controller's events arrive on its interrupt IN pipe, and only the pipe object can be used
 // to wrap them, so it's remembered when it's created. Anything else on the bus is left alone.
 static void captureInterruptPipe(void *that, StandardUSB::EndpointDescriptor const *descriptor, IOUSBHostDevice *device) {
-    if (!descriptor || !device)
-        return;
-    const StandardUSB::DeviceDescriptor *deviceDescriptor = device->getDeviceDescriptor();
-    if (!deviceDescriptor || deviceDescriptor->idVendor != 0x8087)
+    if (!descriptor || !device || !isIntelBluetooth(device))
         return;
     // The endpoint is picked apart by hand: StandardUSB::getEndpointType/getEndpointDirection are
     // exports of IOUSBHostFamily, and OpenCore's prelinker resolves them to 0 (RIP-relative
@@ -223,10 +218,12 @@ static void rewriteCompletion(void *owner, void *parameter, IOReturn status, uin
     auto *delayed = static_cast<DelayedCompletion *>(owner);
     IOMemoryDescriptor *buffer = delayed->buffer;
     // Tahoe hands over the buffer the stack already prepared, so prepare() is refused there and
-    // the bytes are read directly, the way IntelBTPatcher does it.
+    // the bytes are read directly, the way IntelBTPatcher does it. Only a hold this call took is
+    // released again: when prepare() is refused the hold belongs to the USB stack, and completing
+    // it here would release that one instead.
     if (status == kIOReturnSuccess && buffer && bytesTransferred >= 6 &&
         buffer->getLength() >= BTLEAdv::kDataLengthEventLength) {
-        buffer->prepare(kIODirectionInOut);
+        const IOReturn prepared = buffer->prepare(kIODirectionInOut);
         uint8_t event[32] = {};
         const size_t size = min(size_t(bytesTransferred), sizeof(event));
         buffer->readBytes(0, event, size);
@@ -243,7 +240,8 @@ static void rewriteCompletion(void *owner, void *parameter, IOReturn status, uin
                 noteHook("BTLEAdvLengthFailures", ++lengthFailures);
             }
         }
-        buffer->complete(kIODirectionInOut);
+        if (prepared == kIOReturnSuccess)
+            buffer->complete(kIODirectionInOut);
     }
     const IOUSBHostCompletion original = delayed->original;
     IOFree(delayed, sizeof(*delayed));
