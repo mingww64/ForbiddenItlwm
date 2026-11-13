@@ -76,6 +76,7 @@ Users on Reddit and GitHub have reported:
 | --- | --- |
 | Intel AX201 | macOS 26.7.1 |
 | Intel AX211, on other machines than the test laptop | macOS 26.7.1 |
+| Intel Wireless-AC 9462 (Bluetooth 8087:0029), SMBIOS MacBookPro16,4 | macOS 26.7.2 (25G332): BTLEAdvFixup 0.9.1 patches this build's bluetoothd, and a new Bluetooth LE mouse bonds and stays connected (the bonding fix above); bluetoothd stays stable |
 | Intel AX210 (desktop, Intel NUC8) | macOS 26.7.2, with 0.3.1-test1 (issue #8) |
 | Intel AX210 | macOS 26.7.3, with 0.3.1-test1 (issue #5) |
 | Intel AX201 | macOS Sequoia 15.8.2, with 0.3.0-beta1 and 0.4.1-beta1: Wi-Fi works; with 0.4.1 each device lists the other, but transfers don't work; with 0.5.0, `awdl0` is still never created; **with 0.5.1-test1, AirDrop works both ways** (issue #7) |

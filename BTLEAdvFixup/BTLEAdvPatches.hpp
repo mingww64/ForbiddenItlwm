@@ -15,6 +15,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 namespace BTLEAdv {
 #if !defined(BTLEADV_SEQUOIA) && !defined(BTLEADV_SONOMA)
 // je to the "unsupported" path, then "callq *0x918(%rcx)", the advertising sets query.
@@ -67,6 +68,14 @@ static_assert(sizeof(advertisingFind2673) == sizeof(advertisingReplace2673), "pa
 static_assert(sizeof(scanningFind2673) == sizeof(scanningReplace2673), "patch size");
 static_assert(sizeof(randomAddressFind2673) == sizeof(randomAddressReplace2673), "patch size");
 static_assert(sizeof(extendedConnectionFind2673) == sizeof(extendedConnectionReplace2673), "patch size");
+// macOS 26.7.2 (25G332), from the installed system binary (x86_64 slice, SHA-256 verified at
+// runtime). Its advertising, scanning and randomAddress sites are byte-identical to 26.7.3's
+// and are covered by the 26.7.3 set above. Only the extendedConnection site differs: the
+// chipset byte moved from [rdi-0xa2] to [rdi-0x8a] and the setter call displacement changed.
+// Verified unique in the installed 25G332 bluetoothd (single page, offset 0x510f6c).
+static const uint8_t extendedConnectionFind2672[] = {0x0f,0xb6,0xbd,0x76,0xff,0xff,0xff,0xe8,0x1f,0x3a,0xd1,0xff};
+static const uint8_t extendedConnectionReplace2672[] = {0xbf,0x01,0x00,0x00,0x00,0x90,0x90,0xe8,0x1f,0x3a,0xd1,0xff};
+static_assert(sizeof(extendedConnectionFind2672) == sizeof(extendedConnectionReplace2672), "patch size");
 #elif defined(BTLEADV_SEQUOIA)
 // macOS 15.8.3 (24H241); 15.8 (24H23) and 15.8.2 (24H232) match too. The capability queries are "callq *0x7c0(%rcx)" (advertising sets) and
 // "callq *0x848(%rcx)" (extended scanning); the chipset field is at 0x2f8. Each site was matched to
@@ -141,7 +150,17 @@ static const Patch kPatches[] = {
     BTLEADV_PATCH(randomAddressFind2673, randomAddressReplace2673, false),
     BTLEADV_PATCH(extendedConnectionFind2673, extendedConnectionReplace2673, false),
     BTLEADV_PATCH(scanningFind2673, scanningReplace2673, true),
+    BTLEADV_PATCH(extendedConnectionFind2672, extendedConnectionReplace2672, false),
 #endif
 };
 #undef BTLEADV_PATCH
+inline bool shouldApplyPatch(const Patch &patch, const char *build) {
+#if !defined(BTLEADV_SEQUOIA) && !defined(BTLEADV_SONOMA)
+    // This setter-call signature could occur in a different function on other builds. Do
+    // not patch an unrelated site merely because its instruction bytes match.
+    if (patch.find == extendedConnectionFind2672)
+        return build && strcmp(build, "25G332") == 0;
+#endif
+    return true;
+}
 }
