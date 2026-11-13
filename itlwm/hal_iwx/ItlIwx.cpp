@@ -6071,6 +6071,10 @@ static uint32_t awdlCoexBaTxAsks, awdlCoexBaTxAskRounds, awdlCoexBaTxAgreements,
     awdlCoexBaTxFrames, awdlCoexBaTxSubmitErrors, awdlCoexBaTxNotifs, awdlCoexBaTxAcked, awdlCoexBaTxSentAir,
     awdlCoexBaTxQueueResult, awdlCoexBaTxDelbas, awdlCoexBaTxPeerAdds;
 static uint64_t awdlCoexBaTxLastAskUS, awdlCoexBaTxRestUntilUS;
+// Asking stops once nothing has gone to or come from the peer for this long and no bulk send runs: after a
+// transfer the rounds went on for minutes (#24). Data to or from it starts a fresh round.
+constexpr uint64_t kAwdlCoexBaIdleAskUS = 30000000;
+static uint32_t awdlCoexBaTxIdleHolds;
 static ItlAWDL::BaTxBulkState awdlCoexBaTxBulk;
 static bool awdlCoexBaSendingAgg;
 // iwlmvm enables aggregation for a TID by clearing its bit in tid_disable_tx (STA_MODIFY_TID_DISABLE_TX);
@@ -6430,6 +6434,7 @@ static void awdlCoexPublish()
             root->setProperty("ITLAWDLCoexBaAsksSkippedAway", awdlCoexBaAsksSkippedAway, 32);
             root->setProperty("ITLAWDLCoexBaPeerAccepted", awdlCoexBaPeerAccepted);
             root->setProperty("ITLAWDLCoexBaTxAskRounds", awdlCoexBaTxAskRounds, 32);
+            root->setProperty("ITLAWDLCoexBaTxIdleHolds", awdlCoexBaTxIdleHolds, 32);
             root->setProperty("ITLAWDLCoexBaTxAgreements", awdlCoexBaTxAgreements, 32);
             root->setProperty("ITLAWDLCoexBaTxRefusals", awdlCoexBaTxRefusals, 32);
             root->setProperty("ITLAWDLCoexBaTxDelbas", awdlCoexBaTxDelbas, 32);
@@ -8226,6 +8231,15 @@ awdlCoexBaHandle(struct iwx_softc *sc)
     if (awdlCoexBaTxState != kCoexBaTxAsking)
         return;
     const uint64_t askNow = awdlUptimeUS();
+    // Idle peer, no bulk send: hold, and let the next data start a fresh round without waiting out a rest.
+    if (!awdlCoexBaTxBulk.bulk && askNow - awdlCoexBaPeerLastUS > kAwdlCoexBaIdleAskUS) {
+        if (awdlCoexBaTxAsks || awdlCoexBaTxRestUntilUS) {
+            awdlCoexBaTxAsks = 0;
+            awdlCoexBaTxRestUntilUS = 0;
+            ++awdlCoexBaTxIdleHolds;
+        }
+        return;
+    }
     if (awdlCoexBaTxRestUntilUS && askNow < awdlCoexBaTxRestUntilUS)
         return;
     awdlCoexBaTxRestUntilUS = 0;
