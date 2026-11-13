@@ -223,6 +223,7 @@ int iwx_debug = 1;
 
 bool ItlIwx::attach(IOPCIDevice *device)
 {
+    com.qfullmsk.reset();
     pci.pa_tag = device;
     pci.workloop = getMainWorkLoop();
 #ifdef AIRPORT_VTD
@@ -2371,19 +2372,26 @@ iwx_write_mem32(struct iwx_softc *sc, uint32_t addr, uint32_t val)
     return iwx_write_mem(sc, addr, &val, 1);
 }
 
+/*
+ * A register that reads as all ones means the device is not answering on
+ * the bus. That can happen briefly while the PCIe link comes back after
+ * resume, so an all-ones read never counts as success but polling goes on
+ * until the caller's timeout.
+ */
 int ItlIwx::
 iwx_poll_bit(struct iwx_softc *sc, int reg, uint32_t bits, uint32_t mask,
              int timo)
 {
+    uint32_t val;
+    
     for (;;) {
-        uint32_t val = IWX_READ(sc, reg);
-        if (val == 0xFFFFFFFF) {
-            return 0;
-        }
-        if ((val & mask) == (bits & mask)) {
+        val = IWX_READ(sc, reg);
+        if (val != 0xffffffff && (val & mask) == (bits & mask))
             return 1;
-        }
         if (timo < 10) {
+            if (val == 0xffffffff)
+                XYLog("%s: device not responding (reg 0x%x reads 0xffffffff)\n",
+                      DEVNAME(sc), reg);
             return 0;
         }
         timo -= 10;
@@ -2866,7 +2874,7 @@ iwx_reset_tx_ring(struct iwx_softc *sc, struct iwx_tx_ring *ring)
     memset(ring->desc, 0, ring->desc_dma.size);
     //    bus_dmamap_sync(sc->sc_dmat, ring->desc_dma.map, 0,
     //        ring->desc_dma.size, BUS_DMASYNC_PREWRITE);
-    sc->qfullmsk &= ~(1 << ring->qid);
+    sc->qfullmsk.clear(ring->qid);
     ring->queued = 0;
     ring->cur = 0;
     ring->tail = 0;
@@ -3858,7 +3866,7 @@ iwx_tvqm_enable_txq(struct iwx_softc *sc, int tid, int ssn, uint32_t size, int s
             goto fail;
         }
     }
-    if ((fwqid <= IWX_QID_MGMT && !spareMonitorAuxSlot && !spareBaSlot) ||
+    if ((fwqid <= sc->first_data_qid && !spareMonitorAuxSlot && !spareBaSlot) ||
         sc->txq[fwqid].queued || wr_idx >= getTxQueueSize()) {
         err = -EIO;
         goto fail;
@@ -10008,8 +10016,8 @@ iwx_clear_oactive(struct iwx_softc *sc, struct iwx_tx_ring *ring)
     struct _ifnet *ifp = &ic->ic_if;
 
     if (ring->queued < ring->low_mark) {
-        sc->qfullmsk &= ~(1 << ring->qid);
-        if (sc->qfullmsk == 0 && ifq_is_oactive(&ifp->if_snd)) {
+        sc->qfullmsk.clear(ring->qid);
+        if (sc->qfullmsk.empty() && ifq_is_oactive(&ifp->if_snd)) {
             ifq_clr_oactive(&ifp->if_snd);
             (*ifp->if_start)(ifp);
         }
@@ -10092,9 +10100,9 @@ iwx_rx_tx_ba_notif(struct iwx_softc *sc, struct iwx_rx_packet *pkt, struct iwx_r
     for (i = 0; i < le16toh(ba_res->tfd_cnt); i++) {
         struct iwx_compressed_ba_tfd *ba_tfd = &ba_res->tfd[i];
 
-        tid = ba_tfd->tid;
-
         qid = le16toh(ba_tfd->q_num);
+        if (qid >= nitems(sc->txq) || !sc->txq[qid].ring_count)
+            continue;
         ring = &sc->txq[qid];
         const bool awdlBaQueue = int(qid) == awdlBaTxQueue;
         const bool coexQueue = (awdlCoexQueue >= 0 && int(qid) == awdlCoexQueue) ||
@@ -10288,13 +10296,13 @@ iwx_rx_tx_cmd(struct iwx_softc *sc, struct iwx_rx_packet *pkt,
         for (int i = 0; i < tx_resp->frame_count; i++) {
             uint16_t fstatus = le16_to_cpu((&tx_resp->status)[i].status);
 
-            XYLog("status %s (0x%04x), try-count (%d) qid (%d) seq (0x%x)\n",
+            DPRINTFN(3, ("status %s (0x%04x), try-count (%d) qid (%d) seq (0x%x)\n",
                          iwx_get_agg_tx_status(fstatus),
                          fstatus & IWX_AGG_TX_STATE_STATUS_MSK,
                          (fstatus & IWX_AGG_TX_STATE_TRY_CNT_MSK) >>
                          IWX_AGG_TX_STATE_TRY_CNT_POS,
                          qid,
-                         le16_to_cpu((&tx_resp->status)[i].sequence));
+                         le16_to_cpu((&tx_resp->status)[i].sequence)));
         }
     } else {
         tid = tx_resp->ra_tid & 0x0f;
@@ -10302,6 +10310,18 @@ iwx_rx_tx_cmd(struct iwx_softc *sc, struct iwx_rx_packet *pkt,
         ssn = le32toh(ssn) & 0xfff;
         idx = IWX_AGG_SSN_TO_TXQ_IDX(ssn, ring->ring_count);
         txd = &ring->data[idx];
+        // laobamac d695c97: on the station's own queues the SSN is the next frame to send, so the
+        // completed frame is the one before it. The AWDL queues keep their own accounting below.
+        if (!coexQueue && qid != awdlBaTxQueue && qid != awdlMonitorQueue &&
+            !(awdlCoexBaTxQueue >= 0 && qid == awdlCoexBaTxQueue)) {
+            if (!itlTxCompletionValid(ring->tail, ring->queued, idx, ring->ring_count))
+                return;
+            if (idx == ring->tail) {
+                awdlAfterCompletion(sc);
+                return;
+            }
+            txd = &ring->data[(idx + ring->ring_count - 1) % ring->ring_count];
+        }
         if (coexQueue) {
             // This completion frees slots from the tail up to, not including, idx. That has to be at least
             // one and at most what is outstanding; anything else is a fault, and nothing is freed for it.
@@ -11862,6 +11882,10 @@ iwx_tx(struct iwx_softc *sc, mbuf_t m, struct ieee80211_node *ni, int ac, int mo
     wh = mtod(m, struct ieee80211_frame *);
     type = wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK;
     subtype = wh->i_fc[0] & IEEE80211_FC0_SUBTYPE_MASK;
+#ifdef AIRPORT_WCL
+    const int trafficAC = ieee80211_has_qos(wh) ?
+        ieee80211_wcl_ac(ieee80211_get_qos(wh) & IEEE80211_QOS_TID) : EDCA_AC_BE;
+#endif
     if (type == IEEE80211_FC0_TYPE_CTL)
         hdrlen = sizeof(struct ieee80211_frame_min);
     else
@@ -11995,8 +12019,7 @@ iwx_tx(struct iwx_softc *sc, mbuf_t m, struct ieee80211_node *ni, int ac, int mo
     //    totlen = m->m_pkthdr.len;
     totlen = mbuf_pkthdr_len(m);
     
-    if (hdrlen % 4)
-        offload_assist |= IWX_TX_CMD_OFFLD_PAD;
+    offload_assist = itlTxOffloadHeader(hdrlen);
     
     if (sc->sc_device_family >= IWX_DEVICE_FAMILY_AX210) {
         tx_gen3 = (struct iwx_tx_cmd_gen3 *)cmd->data;
@@ -12112,9 +12135,13 @@ iwx_tx(struct iwx_softc *sc, mbuf_t m, struct ieee80211_node *ni, int ac, int mo
     /* Mark TX ring as full if we reach a certain threshold. */
     if (++ring->queued > ring->hi_mark) {
 //        XYLog("%s sc->qfullmsk is FULL qid=%d ring->cur=%d ring->queued=%d\n", __FUNCTION__, ring->qid, ring->cur, ring->queued);
-        sc->qfullmsk |= 1 << ring->qid;
+        sc->qfullmsk.set(ring->qid);
     }
     
+#ifdef AIRPORT_WCL
+    if (type == IEEE80211_FC0_TYPE_DATA && !(subtype & IEEE80211_FC0_SUBTYPE_NODATA))
+        ++ic->ic_wcl_tx_packets[trafficAC];
+#endif
     return 0;
 }
 
@@ -13034,7 +13061,15 @@ iwx_umac_scan(struct iwx_softc *sc, int bgscan)
     struct iwx_scan_umac_chan_param *chanparam;
     size_t req_len;
     int err, async = bgscan;
+#ifdef AIRPORT_WCL
+    const auto timing = AirportWCL::scanTiming(ic->ic_wcl_scan_away_time_ms, bgscan,
+        isset(sc->sc_ucode_api, IWX_UCODE_TLV_API_FRAGMENTED_SCAN));
+    const uint32_t timeout = htole32(timing.suspendTU);
+    const uint32_t maxOut = htole32(timing.maxOutTU);
+#else
     const uint32_t timeout = bgscan ?  htole32(120) : htole32(0);
+    const uint32_t maxOut = timeout;
+#endif
     uint8_t scan_ver = iwx_lookup_cmd_ver(sc, IWX_LONG_GROUP, IWX_SCAN_REQ_UMAC);
     
     if (scan_ver == 12)
@@ -13073,12 +13108,12 @@ iwx_umac_scan(struct iwx_softc *sc, int bgscan)
             htole16(IWX_SCAN_ADWELL_MAX_BUDGET_FULL_SCAN);
         
         req->v7.scan_priority = htole32(IWX_SCAN_PRIORITY_EXT_6);
-        req->v7.max_out_time[IWX_SCAN_LB_LMAC_IDX] = timeout;
+        req->v7.max_out_time[IWX_SCAN_LB_LMAC_IDX] = maxOut;
         req->v7.suspend_time[IWX_SCAN_LB_LMAC_IDX] = timeout;
         
         if (isset(sc->sc_enabled_capa, IWX_UCODE_TLV_CAPA_CDB_SUPPORT)) {
             req->v7.max_out_time[IWX_SCAN_HB_LMAC_IDX] =
-                timeout;
+                maxOut;
             req->v7.suspend_time[IWX_SCAN_HB_LMAC_IDX] =
                 timeout;
         }
@@ -13107,7 +13142,7 @@ iwx_umac_scan(struct iwx_softc *sc, int bgscan)
         
         if (isset(sc->sc_enabled_capa, IWX_UCODE_TLV_CAPA_CDB_SUPPORT)) {
             req->v6.max_out_time[IWX_SCAN_HB_LMAC_IDX] =
-                timeout;
+                maxOut;
             req->v6.suspend_time[IWX_SCAN_HB_LMAC_IDX] =
                 timeout;
         }
@@ -13115,7 +13150,7 @@ iwx_umac_scan(struct iwx_softc *sc, int bgscan)
         req->v6.scan_priority =
             htole32(IWX_SCAN_PRIORITY_EXT_6);
         req->v6.max_out_time[IWX_SCAN_LB_LMAC_IDX] =
-            timeout;
+            maxOut;
         req->v6.suspend_time[IWX_SCAN_LB_LMAC_IDX] =
             timeout;
     }
@@ -13173,6 +13208,21 @@ iwx_umac_scan(struct iwx_softc *sc, int bgscan)
         htole32(IWX_UMAC_SCAN_GEN_FLAGS_EXTENDED_DWELL);
     }
     
+#ifdef AIRPORT_WCL
+    if (timing.fragmented) {
+        req->general_flags &= ~htole16(IWX_UMAC_SCAN_GEN_FLAGS_EXTENDED_DWELL);
+        req->general_flags |= htole16(IWX_UMAC_SCAN_GEN_FLAGS_FRAGMENTED);
+        bool cdb = isset(sc->sc_enabled_capa, IWX_UCODE_TLV_CAPA_CDB_SUPPORT);
+        if (cdb)
+            req->general_flags |= htole16(IWX_UMAC_SCAN_GEN_FLAGS_LMAC2_FRAGMENTED);
+        if (isset(sc->sc_ucode_api, IWX_UCODE_TLV_API_ADAPTIVE_DWELL_V2)) {
+            req->v8.num_of_fragments[IWX_SCAN_LB_LMAC_IDX] = IWL_SCAN_NUM_OF_FRAGS;
+            if (cdb)
+                req->v8.num_of_fragments[IWX_SCAN_HB_LMAC_IDX] = IWL_SCAN_NUM_OF_FRAGS;
+        }
+    }
+#endif
+
     if (isset(sc->sc_ucode_api, IWX_UCODE_TLV_API_SCAN_EXT_CHAN_VER))
         err = iwx_fill_probe_req(sc, &tail->preq);
     else
@@ -13211,7 +13261,15 @@ iwx_umac_scan_v12(struct iwx_softc *sc, int bgscan)
     struct iwx_scan_req_umac_v12 *req;
     size_t req_len;
     uint16_t gen_flags = 0;
+#ifdef AIRPORT_WCL
+    const auto timing = AirportWCL::scanTiming(ic->ic_wcl_scan_away_time_ms, bgscan,
+        isset(sc->sc_ucode_api, IWX_UCODE_TLV_API_FRAGMENTED_SCAN));
+    const uint32_t timeout = htole32(timing.suspendTU);
+    const uint32_t maxOut = htole32(timing.maxOutTU);
+#else
     const uint32_t timeout = bgscan ?  htole32(120) : htole32(0);
+    const uint32_t maxOut = timeout;
+#endif
     struct iwx_scan_general_params_v10 *general_params;
     struct iwx_scan_channel_params_v4 *cp;
     struct iwx_host_cmd hcmd = {
@@ -13241,6 +13299,16 @@ iwx_umac_scan_v12(struct iwx_softc *sc, int bgscan)
     gen_flags |= IWX_UMAC_SCAN_GEN_FLAGS_V2_PASS_ALL |
     IWX_UMAC_SCAN_GEN_FLAGS_V2_ADAPTIVE_DWELL;
     
+#ifdef AIRPORT_WCL
+    if (timing.fragmented) {
+        gen_flags |= IWX_UMAC_SCAN_GEN_FLAGS_V2_FRAGMENTED_LMAC1;
+        general_params->num_of_fragments[IWX_SCAN_LB_LMAC_IDX] = IWL_SCAN_NUM_OF_FRAGS;
+        if (isset(sc->sc_enabled_capa, IWX_UCODE_TLV_CAPA_CDB_SUPPORT)) {
+            gen_flags |= IWX_UMAC_SCAN_GEN_FLAGS_V2_FRAGMENTED_LMAC2;
+            general_params->num_of_fragments[IWX_SCAN_HB_LMAC_IDX] = IWL_SCAN_NUM_OF_FRAGS;
+        }
+    }
+#endif
     req->scan_params.general_params.flags = gen_flags;
     
     general_params->adwell_default_social_chn =
@@ -13257,14 +13325,14 @@ iwx_umac_scan_v12(struct iwx_softc *sc, int bgscan)
     
     general_params->scan_priority = htole32(IWX_SCAN_PRIORITY_EXT_6);
     general_params->max_out_of_time[IWX_SCAN_LB_LMAC_IDX] =
-        timeout;
+        maxOut;
     general_params->suspend_time[IWX_SCAN_LB_LMAC_IDX] =
         timeout;
     
-    general_params->max_out_of_time[IWX_SCAN_HB_LMAC_IDX] =
-        timeout;
-    general_params->suspend_time[IWX_SCAN_HB_LMAC_IDX] =
-        timeout;
+    if (isset(sc->sc_enabled_capa, IWX_UCODE_TLV_CAPA_CDB_SUPPORT)) {
+        general_params->max_out_of_time[IWX_SCAN_HB_LMAC_IDX] = maxOut;
+        general_params->suspend_time[IWX_SCAN_HB_LMAC_IDX] = timeout;
+    }
 
     general_params->active_dwell[IWX_SCAN_LB_LMAC_IDX] = IWL_SCAN_DWELL_ACTIVE;
     general_params->passive_dwell[IWX_SCAN_LB_LMAC_IDX] = IWL_SCAN_DWELL_PASSIVE;
@@ -13323,7 +13391,15 @@ iwx_umac_scan_v14(struct iwx_softc *sc, int bgscan)
     uint16_t gen_flags = 0;
     struct iwx_scan_general_params_v10 *general_params;
     struct iwx_scan_channel_params_v6 *cp;
+#ifdef AIRPORT_WCL
+    const auto timing = AirportWCL::scanTiming(ic->ic_wcl_scan_away_time_ms, bgscan,
+        isset(sc->sc_ucode_api, IWX_UCODE_TLV_API_FRAGMENTED_SCAN));
+    const uint32_t timeout = htole32(timing.suspendTU);
+    const uint32_t maxOut = htole32(timing.maxOutTU);
+#else
     const uint32_t timeout = bgscan ?  htole32(120) : htole32(0);
+    const uint32_t maxOut = timeout;
+#endif
     struct iwx_host_cmd hcmd = {
         .id = iwx_cmd_id(IWX_SCAN_REQ_UMAC, IWX_LONG_GROUP, 0),
         .len = { 0, },
@@ -13351,6 +13427,16 @@ iwx_umac_scan_v14(struct iwx_softc *sc, int bgscan)
     gen_flags |= IWX_UMAC_SCAN_GEN_FLAGS_V2_PASS_ALL |
     IWX_UMAC_SCAN_GEN_FLAGS_V2_ADAPTIVE_DWELL;
     
+#ifdef AIRPORT_WCL
+    if (timing.fragmented) {
+        gen_flags |= IWX_UMAC_SCAN_GEN_FLAGS_V2_FRAGMENTED_LMAC1;
+        general_params->num_of_fragments[IWX_SCAN_LB_LMAC_IDX] = IWL_SCAN_NUM_OF_FRAGS;
+        if (isset(sc->sc_enabled_capa, IWX_UCODE_TLV_CAPA_CDB_SUPPORT)) {
+            gen_flags |= IWX_UMAC_SCAN_GEN_FLAGS_V2_FRAGMENTED_LMAC2;
+            general_params->num_of_fragments[IWX_SCAN_HB_LMAC_IDX] = IWL_SCAN_NUM_OF_FRAGS;
+        }
+    }
+#endif
     req->scan_params.general_params.flags = gen_flags;
     
     general_params->adwell_default_social_chn =
@@ -13366,14 +13452,14 @@ iwx_umac_scan_v14(struct iwx_softc *sc, int bgscan)
     
     general_params->scan_priority = htole32(IWX_SCAN_PRIORITY_EXT_6);
     general_params->max_out_of_time[IWX_SCAN_LB_LMAC_IDX] =
-        timeout;
+        maxOut;
     general_params->suspend_time[IWX_SCAN_LB_LMAC_IDX] =
         timeout;
     
-    general_params->max_out_of_time[IWX_SCAN_HB_LMAC_IDX] =
-        timeout;
-    general_params->suspend_time[IWX_SCAN_HB_LMAC_IDX] =
-        timeout;
+    if (isset(sc->sc_enabled_capa, IWX_UCODE_TLV_CAPA_CDB_SUPPORT)) {
+        general_params->max_out_of_time[IWX_SCAN_HB_LMAC_IDX] = maxOut;
+        general_params->suspend_time[IWX_SCAN_HB_LMAC_IDX] = timeout;
+    }
 
     general_params->active_dwell[IWX_SCAN_LB_LMAC_IDX] = IWL_SCAN_DWELL_ACTIVE;
     general_params->passive_dwell[IWX_SCAN_LB_LMAC_IDX] = IWL_SCAN_DWELL_PASSIVE;
@@ -17245,7 +17331,7 @@ _iwx_start_task(OSObject *target, void *arg0, void *arg1, void *arg2, void *arg3
     
     for (;;) {
         /* why isn't this done per-queue? */
-        if (sc->qfullmsk != 0) {
+        if (!sc->qfullmsk.empty()) {
             ifq_set_oactive(&ifp->if_snd);
             break;
         }
@@ -17795,6 +17881,32 @@ struct iwl_pnvm_init_complete_ntfy {
     uint32_t status;
 } __packed; /* PNVM_INIT_COMPLETE_NTFY_S_VER_1 */
 
+/*
+ * Number of bytes of an RX buffer that iwx_rx_pkt() will consume. Must
+ * stop exactly where the packet loop in iwx_rx_pkt() stops; the bytes
+ * after this point are zeroed instead of copied from the bounce buffer.
+ */
+size_t ItlIwx::
+iwx_rx_buf_used(struct iwx_softc *sc, const uint8_t *buf)
+{
+    struct iwx_rx_packet *pkt;
+    const size_t minsz = sizeof(pkt->len_n_flags) + sizeof(pkt->hdr);
+    uint32_t offset = 0, len;
+    
+    while (offset + minsz < IWX_RBUF_SIZE) {
+        pkt = (struct iwx_rx_packet *)(buf + offset);
+        if (!iwx_rx_pkt_valid(pkt))
+            break;
+        len = sizeof(pkt->len_n_flags) + iwx_rx_packet_len(pkt);
+        if (len < minsz || len > (IWX_RBUF_SIZE - offset))
+            break;
+        offset += roundup(len, IWX_FH_RSCSR_FRAME_ALIGN);
+        if (sc->sc_device_family >= IWX_DEVICE_FAMILY_AX210)
+            break;
+    }
+    return MIN(offset, IWX_RBUF_SIZE);
+}
+
 void ItlIwx::
 iwx_rx_pkt(struct iwx_softc *sc, struct iwx_rx_data *data, struct mbuf_list *ml)
 {
@@ -17808,7 +17920,15 @@ iwx_rx_pkt(struct iwx_softc *sc, struct iwx_rx_data *data, struct mbuf_list *ml)
     //    bus_dmamap_sync(sc->sc_dmat, data->map, 0, IWX_RBUF_SIZE,
     //        BUS_DMASYNC_POSTREAD);
     
-    if (!bus_dmamap_read(data->map, data->m, IWX_RBUF_SIZE)) {
+    const uint8_t *rxbuf = (const uint8_t *)bus_dmamap_rx_data(data->map, IWX_RBUF_SIZE);
+    if (rxbuf) {
+        /* Copy only the packets the firmware wrote, zero the rest. */
+        if (!bus_dmamap_read_used(data->map, data->m,
+            iwx_rx_buf_used(sc, rxbuf), IWX_RBUF_SIZE)) {
+            ifp->netStat->inputErrors++;
+            return;
+        }
+    } else if (!bus_dmamap_read(data->map, data->m, IWX_RBUF_SIZE)) {
         ifp->netStat->inputErrors++;
         return;
     }
