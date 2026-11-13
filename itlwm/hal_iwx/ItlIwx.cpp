@@ -5978,6 +5978,13 @@ static bool awdlCoexSameBand;
 // requests and the agreement never formed; on any other station channel it formed within a second.
 static bool awdlCoexBaAskShared;
 static uint32_t awdlCoexBaAsksShared;
+// Block Ack on the shared context (#16, #24): when the listener shares the station's binding (without
+// -itlawdlcoexmulti, or in its fallback), receive and send Block Ack run there as well. Until 0.5.3 they
+// ran only with the listener on its own context, so a shared listener answered no ADDBA request and sent
+// every frame singly (#16: 84 requests, 0 answers, about 1 MB/s). -itlawdlnosharedba restores that, for an A/B.
+static bool awdlCoexNoSharedBa;
+// The width the last peer station was added with (80 or 20; 0 before the first).
+static uint32_t awdlCoexBaPeerWidth;
 // The usable country the beacon hints were gathered under (#21, and seen on the project machine): the
 // firmware's answer can drop to its world code and come back to the same country, and clearing the hints
 // each time sent the listener back to channel 6. Hints are now cleared only for a different usable country.
@@ -6326,6 +6333,8 @@ static void awdlCoexPublish()
     root->setProperty("ITLAWDLCoexHintClears", awdlCoexHintClears, 32);
     root->setProperty("ITLAWDLCoexBaAsksShared", awdlCoexBaAsksShared, 32);
     root->setProperty("ITLAWDLCoexBaAskShared", awdlCoexBaAskShared);
+    root->setProperty("ITLAWDLCoexBaSharedOff", awdlCoexNoSharedBa);
+    root->setProperty("ITLAWDLCoexBaPeerWidth", awdlCoexBaPeerWidth, 32);
     if (auto *seq = OSData::withBytes(awdlCoexPeerSeq, sizeof(awdlCoexPeerSeq))) {
         root->setProperty("ITLAWDLCoexPeerSequence", seq);
         seq->release();
@@ -7678,11 +7687,24 @@ awdlCoexBaRemovePeer(struct iwx_softc *sc)
     return flushErr ? flushErr : rmErr;
 }
 
+// The width the peer station and its rate control use: the listener's own context's with it, the station's
+// when the listener shares the station's binding (80 MHz for a 5 GHz station at 80 or 160 MHz, else 20).
+static int awdlCoexBaWidth(struct ieee80211com *ic)
+{
+    if (awdlCoexMultiActive)
+        return awdlCoexOwnWidth;
+    const struct ieee80211_node *ni = ic->ic_bss;
+    if (!ni || !ni->ni_chan || IEEE80211_IS_CHAN_2GHZ(ni->ni_chan))
+        return 20;
+    return ni->ni_chw == IEEE80211_CHAN_WIDTH_80 || ni->ni_chw == IEEE80211_CHAN_WIDTH_160 ? 80 : 20;
+}
+
 // Adds the peer station for `peer`, bound to the listener. Nonzero on failure (BA is then quarantined).
 int ItlIwx::
 awdlCoexBaAddPeer(struct iwx_softc *sc, const uint8_t *peer)
 {
     const int gen = sc->sc_generation;
+    const int width = awdlCoexBaWidth(&sc->sc_ic);
     struct iwx_add_sta_cmd cmd;
     memset(&cmd, 0, sizeof(cmd));
     cmd.sta_id = kAwdlBaStationId;
@@ -7690,9 +7712,9 @@ awdlCoexBaAddPeer(struct iwx_softc *sc, const uint8_t *peer)
     cmd.mac_id_n_color = htole32(IWX_FW_CMD_ID_AND_COLOR(kAwdlCoexMacId, 0));
     IEEE80211_ADDR_COPY(&cmd.addr, peer);
     cmd.tid_disable_tx = htole16(0xffff);
-    cmd.station_flags = htole32((awdlCoexOwnWidth == 80 ? IWX_STA_FLG_FAT_EN_80MHZ : IWX_STA_FLG_FAT_EN_20MHZ) |
+    cmd.station_flags = htole32((width == 80 ? IWX_STA_FLG_FAT_EN_80MHZ : IWX_STA_FLG_FAT_EN_20MHZ) |
                                 IWX_STA_FLG_MIMO_EN_MIMO2 |
-                                (awdlCoexBaTxEnabled && awdlCoexOwnWidth == 80 ? IWX_STA_FLG_MAX_AGG_SIZE_1024K :
+                                (awdlCoexBaTxEnabled && width == 80 ? IWX_STA_FLG_MAX_AGG_SIZE_1024K :
                                  IWX_STA_FLG_MAX_AGG_SIZE_64K));
     cmd.station_flags_msk = htole32(IWX_STA_FLG_FAT_EN_MSK | IWX_STA_FLG_MIMO_EN_MSK | IWX_STA_FLG_MAX_AGG_SIZE_MSK |
                                     IWX_STA_FLG_AGG_MPDU_DENS_MSK);
@@ -7707,6 +7729,7 @@ awdlCoexBaAddPeer(struct iwx_softc *sc, const uint8_t *peer)
         return err ? err : EIO;
     }
     awdlCoexBaPeerAdded = true;
+    awdlCoexBaPeerWidth = uint32_t(width);
     awdlCoexBaPeerAccepted = false;
     awdlCoexBaQueueAllocPending = false;
     ++awdlCoexBaPeerEpoch;
@@ -7869,7 +7892,9 @@ awdlCoexBaHandle(struct iwx_softc *sc)
         awdlCoexBaTxState = kCoexBaTxOff;
         awdlCoexBaTxQueue = -1;
     }
-    if (!awdlCoexData || !awdlCoexAdded || !awdlCoexMultiActive || !awdlCoexTxStaAdded || awdlCoexTxHalted ||
+    // On the listener's own context, or on the station's when it shares that (unless -itlawdlnosharedba).
+    if (!awdlCoexData || !awdlCoexAdded || (!awdlCoexMultiActive && awdlCoexNoSharedBa) || !awdlCoexTxStaAdded ||
+        awdlCoexTxHalted ||
         awdlCoexBaFailedGen == gen || awdlCoexMovePending || awdlCoexGeneration != gen || !awdlCoexAddrKnown) {
         awdlCoexBaRequestsPending.clear();
         return;
@@ -8158,9 +8183,9 @@ awdlCoexBaHandle(struct iwx_softc *sc)
         }
         awdlCoexBaTxQueue = queue;
         awdlCoexBaTxSeq = uint16_t(sc->txq[queue].cur) & 0xfff;
-        // Firmware rate control for the peer's station: high rates only, VHT 80 MHz when the listener is at 80.
+        // Firmware rate control for the peer's station: high rates only, VHT 80 MHz when the peer station is.
         const bool before80 = awdlBaTx80Active;
-        awdlBaTx80Active = awdlCoexOwnWidth == 80;
+        awdlBaTx80Active = awdlCoexBaPeerWidth == 80;
         awdlBaTlc = true;
         err = iwx_rs_init(sc, reinterpret_cast<struct iwx_node *>(sc->sc_ic.ic_bss), true);
         awdlBaTlc = false;
@@ -20259,6 +20284,7 @@ iwx_attach(struct iwx_softc *sc, struct pci_attach_args *pa)
             awdlBtCoexRequest = requestedCoexBt;
         awdlCoexSameBand = PE_parse_boot_argn("-itlawdlsameband", &dummy, sizeof(dummy));
         awdlCoexBaAskShared = PE_parse_boot_argn("-itlawdlbaaskshared", &dummy, sizeof(dummy));
+        awdlCoexNoSharedBa = PE_parse_boot_argn("-itlawdlnosharedba", &dummy, sizeof(dummy));
         awdlCoexMultiState = awdlCoexMulti ? "not-added" : "off";
         if (awdlCoexTx) {
             task_set(&awdlCoexTxTaskEntry, awdlCoexTxTask, sc, "awdlCoexTxTask");
