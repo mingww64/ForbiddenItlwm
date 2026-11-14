@@ -85,6 +85,8 @@ static int awdlCoexGeneration = 7, awdlCoexAddingGen = -1, awdlCoexRemovingGen =
     awdlCoexAdds, awdlCoexRemoves, awdlCoexChannel, awdlFixedChannel,
     awdlCoexOrphanQueue = -1;
 static uint32_t awdlCoexToken, awdlCoexAddingNext, awdlCoexAddingOwner;
+static uint32_t awdlCoexAddsAfterRemove, awdlCoexAddsAfterRestart;
+static bool awdlCoexLostToRestart;
 static uint64_t awdlCoexLastMoveUS;
 static ieee80211_channel *awdlCoexOwnChan;
 static const char *awdlCoexMultiState;
