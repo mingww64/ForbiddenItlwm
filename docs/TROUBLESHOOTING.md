@@ -8,7 +8,7 @@ ioreg -l -w0 | grep -E '"ItlwmAWDL(InterfaceBuild|BuildCheck)"|"ITLAWDLCoex(Adde
 
 | Key | Healthy value |
 | --- | --- |
-| `ItlwmAWDLInterfaceBuild` | `forbidden-0.5.4-beta.1`, `forbidden-0.5.4-beta.1-sequoia` or `forbidden-0.5.4-beta.1-sonoma` |
+| `ItlwmAWDLInterfaceBuild` | `forbidden-0.5.4-beta.2`, `forbidden-0.5.4-beta.2-sequoia` or `forbidden-0.5.4-beta.2-sonoma` |
 | `ItlwmAWDLBuildCheck` | `verified` (`expected: …` on a 15.8.x kernel that wasn't checked offline). Anything starting with `blocked` means AirDrop is off on this macOS build: see below |
 | `ITLAWDLCoexAdded` | Yes: the AirDrop listener exists |
 | `ITLAWDLCoexChannel`, `ITLAWDLCoexOwnWidth` | 149 and 80 |
@@ -67,7 +67,7 @@ This is the main known problem. The time goes into the iPhone finding the Mac's 
 
 ## A new Bluetooth LE mouse or keyboard won't pair
 
-With BTLEAdvFixup active and IntelBTPatcher disabled, a new Bluetooth LE mouse or keyboard may connect but never finish pairing (#27). Devices that were paired before keep working. IntelBTPatcher has a fix for this that BTLEAdvFixup doesn't include yet; it's being added (#31). Until then, pair the device once with IntelBTPatcher enabled and `-btleadv` removed, then switch back.
+Fixed in BTLEAdvFixup 0.9.1 (from 0.5.4-beta.2, #27). Earlier versions, with IntelBTPatcher disabled, let a new LE mouse or keyboard connect but never finish pairing; devices paired before kept working. Update BTLEAdvFixup. If a device still won't pair with 0.9.1, check `ioreg -l -w0 -d 1 | grep -E '"BTLEAdv(PipeHooks|LengthRewrites|LengthFailures)"'` while pairing (`PipeHooks` should be 5, and `LengthRewrites` should go up) and report it.
 
 ## Wi-Fi is off or greyed out, and there's no `en0`
 

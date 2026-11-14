@@ -39,7 +39,7 @@ These also use Apple's peer-to-peer Wi-Fi. None has been tried yet, so whether t
 
 ## Done recently
 
-- **0.5.4:** laobamac's later fixes to the base driver ([#36](https://github.com/retropineaple/ForbiddenItlwm/pull/36)); block ack without `-itlawdlcoexmulti` ([#16](https://github.com/retropineaple/ForbiddenItlwm/issues/16)).
+- **0.5.4:** laobamac's later fixes to the base driver ([#36](https://github.com/retropineaple/ForbiddenItlwm/pull/36)); block ack without `-itlawdlcoexmulti` ([#16](https://github.com/retropineaple/ForbiddenItlwm/issues/16)); new LE mice and keyboards pair again with BTLEAdvFixup 0.9.1 ([#31](https://github.com/retropineaple/ForbiddenItlwm/pull/31)).
 - **0.5.1:** AirDrop works on Sequoia ([#7](https://github.com/retropineaple/ForbiddenItlwm/issues/7), [#13](https://github.com/retropineaple/ForbiddenItlwm/issues/13), [#19](https://github.com/retropineaple/ForbiddenItlwm/issues/19)).
 - **0.5.0:** Wi-Fi starts again on machines where 0.4.x didn't ([#14](https://github.com/retropineaple/ForbiddenItlwm/issues/14), [#16](https://github.com/retropineaple/ForbiddenItlwm/issues/16)); channel 149 in China ([#11](https://github.com/retropineaple/ForbiddenItlwm/issues/11)); a Sonoma 14.8.9 test build.
 - **0.2.0:** iMessage and other push services over Wi-Fi.

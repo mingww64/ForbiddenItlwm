@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.4-beta.2
+
+- **BTLEAdvFixup 0.9.1: new Bluetooth LE mice and keyboards pair again ([#27](https://github.com/retropineaple/ForbiddenItlwm/issues/27), [#31](https://github.com/retropineaple/ForbiddenItlwm/pull/31), thanks to CreateRan).** With IntelBTPatcher disabled, a new LE mouse or keyboard connected but never finished pairing, because BTLEAdvFixup didn't include IntelBTPatcher's fix for it. It does now, including lshbluesky's LE Data Length Change fix for Tahoe. Devices that were already paired weren't affected.
+- **BTLEAdvFixup 0.9.1 also patches a second spot in macOS 26.7.2's `bluetoothd`** (25G332), whose bytes differ from 26.7.3's there.
+- The Wi-Fi driver is the same code as 0.5.4-beta.1; only its build name changed.
+- **Tested on the project's hackintosh** (Tahoe 26.7.1): BTLEAdvFixup 0.9.1 loads with all its hooks, Bluetooth and paired devices work, AirDrop at about 20 MB/s both ways. The pairing fix itself was tested by CreateRan on 26.7.2 with an AX200 (a new LE mouse pairs and stays connected).
+
 ## 0.5.4-beta.1
 
 The first release with the new names: **beta** means everything in it was tested on the project's hackintosh. (Up to 0.5.3, `-test1` was used for what is now called alpha.)
