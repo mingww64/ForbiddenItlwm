@@ -17,7 +17,6 @@ constexpr ExtraPatch extraMake(const uint8_t (&find)[N], const uint8_t (&replace
     return {find, replace, N, scanning};
 }
 #define EXTRA_SET(ns) \
-    extraMake(ns::eventMaskFind, ns::eventMaskReplace, true), \
     extraMake(ns::addressResendFind, ns::addressResendReplace), \
     extraMake(ns::rpaHookFind, ns::rpaHookReplace), \
     extraMake(ns::rpaSaveFind, ns::rpaSaveReplace), \
@@ -59,14 +58,14 @@ inline uint32_t applyExtraPatches(const char *build, bool enabled, bool scanning
         return 0;
     // Helpers precede callers. Cached callers are restored if the corresponding
     // helper cannot be established in the same page on this validation pass.
-    static constexpr unsigned order[] = {0, 1, 3, 5, 2, 4, 6};
+    static constexpr unsigned order[] = {0, 2, 4, 1, 3, 5};
     uint32_t changed = 0;
     for (unsigned bit : order) {
         const auto &patch = patches[bit];
         if (patch.scanningOnly && !scanning)
             continue;
-        if (bit == 2 || bit == 4 || bit == 6) {
-            const unsigned helper = bit == 2 ? 3 : 5;
+        if (bit == 1 || bit == 3 || bit == 5) {
+            const unsigned helper = bit == 1 ? 2 : 4;
             if (!extraContainsHelper(page, size, patches[helper])) {
                 extraPatchBytes(page, size, patch, true);
                 continue;

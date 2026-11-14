@@ -32,7 +32,7 @@ subprocess.run(["python3", str(root / "tests/monitor_tx_ownership.py")], check=T
 subprocess.run(["python3", str(root / "tests/monitor_channel.py")], check=True)
 subprocess.run(["python3", str(root / "tests/monitor_probe.py")], check=True)
 build = subprocess.check_output(["sw_vers", "-buildVersion"], text=True).strip()
-pattern_set = {"25G241": "2671", "25G342": "2673"}.get(build, "2671")
+pattern_set = {"25G241": "2671", "25G332": "2672", "25G342": "2673"}.get(build, "2671")
 subprocess.run(["python3", str(root / "tests/btleadv_patterns.py"), "--set", pattern_set], check=True)
 if build == "25G342":
     subprocess.run(["python3", str(root / "tests/btleadv_extra_patterns.py")], check=True)

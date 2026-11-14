@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-NAMES = ('eventMask', 'addressResend', 'rpaHook', 'rpaSave',
+NAMES = ('addressResend', 'rpaHook', 'rpaSave',
          'falAdd', 'falHelper', 'falRemove')
 
 
@@ -74,7 +74,7 @@ def check(binary):
         cursor += size
     else:
         raise AssertionError('writable cache segment missing')
-    print('25G342: seven optional patch pairs verified (offline, not controller behavior)')
+    print('25G342: six optional patch pairs verified (offline, not controller behavior)')
 
 
 if __name__ == '__main__':

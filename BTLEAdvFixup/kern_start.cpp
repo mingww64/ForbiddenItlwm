@@ -12,7 +12,7 @@
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/usb/IOUSBHostDevice.h>
 #include "BTLEAdvPatches.hpp"
-#ifndef BTLEADV_SEQUOIA
+#if !defined(BTLEADV_SEQUOIA) && !defined(BTLEADV_SONOMA)
 #include "BTLEAdvExtraPatches.hpp"
 extern "C" char osversion[];
 #endif
@@ -36,7 +36,7 @@ static void patched_cs_validate_page(vnode_t vp, memory_object_t pager, memory_o
         if (!patch.scanningOnly || patchScanning)
             KernelPatcher::findAndReplace(const_cast<void *>(data), PAGE_SIZE, patch.find, patch.size,
                                           patch.replace, patch.size);
-#ifndef BTLEADV_SEQUOIA
+#if !defined(BTLEADV_SEQUOIA) && !defined(BTLEADV_SONOMA)
     if (patchExtras) {
         // The extra set is intentionally opt-in and only has validated Tahoe tables.
         // The normal four-patch table and unconditional HCI route remain independent.

@@ -9,7 +9,7 @@ int main() {
     for (const char *build : {"25G332", "25G342"}) {
         const auto *set = extraPatchSet(build);
         assert(set);
-        for (unsigned i = 0; i < 7; ++i) {
+        for (unsigned i = 0; i < 6; ++i) {
             unsigned char page[4096] = {};
             memcpy(page + 64, set[i].find, set[i].size);
             assert(applyExtraPatches(build, false, true, page, sizeof(page)) == 0);
@@ -21,10 +21,10 @@ int main() {
         }
         unsigned char page[4096] = {};
         memcpy(page + 64, set[0].find, set[0].size);
-        assert(applyExtraPatches(build, true, false, page, sizeof(page)) == 0);
-        assert(applyExtraPatches(build, true, true, page, sizeof(page)) == 1);
-        for (unsigned caller : {2U, 4U, 6U}) {
-            const unsigned helper = caller == 2 ? 3 : 5;
+        assert(applyExtraPatches(build, true, false, page, sizeof(page)) == 1);
+        assert(applyExtraPatches(build, true, true, page, sizeof(page)) == 0);
+        for (unsigned caller : {1U, 3U, 5U}) {
+            const unsigned helper = caller == 1 ? 2 : 4;
             for (unsigned state = 0; state < 6; ++state) {
                 unsigned char buffer[4096] = {};
                 memcpy(buffer + 64, state & 1 ? set[caller].replace : set[caller].find, set[caller].size);
