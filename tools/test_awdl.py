@@ -60,3 +60,12 @@ with tempfile.TemporaryDirectory(prefix="forbidden-lqm-") as directory:
     subprocess.run(["xcrun", "clang++", "-std=c++14", "-fsanitize=address,undefined",
                     str(root / "tests/wcl_lqm_merge.cpp"), "-o", output], check=True)
     subprocess.run([output], check=True)
+with tempfile.TemporaryDirectory(prefix="forbidden-event-mask-") as directory:
+    for target in ("TAHOE", "SEQUOIA", "SONOMA"):
+        output = str(Path(directory) / target)
+        subprocess.run(["xcrun", "clang++", "-std=c++14", "-fsanitize=address,undefined",
+                        "-DBTLEADV_" + target, str(root / "tests/btleadv_event_mask.cpp"),
+                        "-o", output], check=True)
+        subprocess.run([output], check=True)
+if build == "25G342":
+    subprocess.run(["python3", str(root / "tests/btleadv_event_mask_patterns.py")], check=True)
