@@ -13,6 +13,7 @@
 // Each pattern covers the failed-check branch, the call that fetches the chip object
 // and the capability query, so a different bluetoothd build simply won't match.
 #pragma once
+#include "BTLEAdvEventMask.hpp"
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
@@ -159,6 +160,8 @@ static const Patch kPatches[] = {
     BTLEADV_PATCH(extendedConnectionFind2673, extendedConnectionReplace2673, false),
     BTLEADV_PATCH(scanningFind2673, scanningReplace2673, true),
     BTLEADV_PATCH(extendedConnectionFind2672, extendedConnectionReplace2672, false),
+    BTLEADV_PATCH(eventMaskFind2672, eventMaskReplace2672, true),
+    BTLEADV_PATCH(eventMaskFind2673, eventMaskReplace2673, true),
 #endif
 };
 #undef BTLEADV_PATCH

@@ -315,6 +315,20 @@ if [ -r "$BTD" ] && command -v perl >/dev/null 2>&1; then
         warn "Without them the Mac can't advertise AirDrop over Bluetooth, so iPhones won't list it. Please report this build."
     fi
 fi
+# Report original/patched bytes separately: this is a read-only page observation,
+# not proof of controller behavior or that this particular kext applied the patch.
+case "$(sw_vers -buildVersion)" in
+    25G332|25G342)
+        if [ -r "$BTD" ] && command -v perl >/dev/null 2>&1; then
+            BT_EVENT_MASK=$(perl -0777 -ne '
+                my $original = () = /\x85\xc0\x48\x8d\x05(?:\xf0\x32|\x00\x33)\x90\x00\x48\x8d\x15(?:\xf1\x32|\x01\x33)\x90\x00\x48\x0f\x44\xd0/sg;
+                my $patched = () = /\x85\xc0\x48\x8d\x05(?:\xf0\x32|\x00\x33)\x90\x00\x48\x8d\x15(?:\xf1\x32|\x01\x33)\x90\x00\x0f\x1f\x40\x00/sg;
+                print "original=$original patched=$patched";
+            ' "$BTD" 2>/dev/null)
+            info "BTLEAdv eventMask: $BT_EVENT_MASK (bytes observed; -btlenoscan skips this patch)."
+        fi;;
+    *) info "BTLEAdv eventMask: no validated pattern for this build; unchanged.";;
+esac
 BT_STATE=$(system_profiler SPBluetoothDataType 2>/dev/null | awk -F': ' '/^ *State:/ { print $2; exit }')
 [ -n "$BT_STATE" ] && info "Bluetooth state: $BT_STATE"
 
