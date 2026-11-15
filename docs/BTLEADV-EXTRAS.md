@@ -23,7 +23,14 @@ the advertisement. The implementation is derived from the approach documented in
 The extra set advanced the user's iPhone Mirroring flow to the PIN-confirmation phase. This is
 an observed functional boundary, not proof that mirroring completed, not a controlled comparison
 of each patch, and not an AirDrop transfer result. The injected helper code and writable cache
-remain experimental; unknown builds, Sonoma and Sequoia pass through without these extras.
+remain experimental; Sonoma and Sequoia compile without these extras. Exact byte
+patterns, including RIP-relative displacements, select the targeted bluetoothd;
+unmatched pages pass through. There is no import of the unexported `osversion` symbol.
+
+These patches cannot supply an IRK that bluetoothd failed to read from the keychain
+before first unlock (`-25291`). A controlled post-login bluetoothd restart comparison
+is still needed to separate that cause from a controller Filter Accept List problem.
+No necessity of the RPA/FAL patches is claimed without that result and an extras-off/on test.
 
 The event-mask fix is split into a separate PR for normal `-btleadv` operation,
 as requested in review. This branch does not include or require that new PR.

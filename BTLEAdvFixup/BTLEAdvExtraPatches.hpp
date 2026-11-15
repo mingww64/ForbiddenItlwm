@@ -24,12 +24,12 @@ constexpr ExtraPatch extraMake(const uint8_t (&find)[N], const uint8_t (&replace
     extraMake(ns::falHelperFind, ns::falHelperReplace), \
     extraMake(ns::falRemoveFind, ns::falRemoveReplace)
 
-inline const ExtraPatch *extraPatchSet(const char *build) {
+inline const ExtraPatch *extraPatchSet(unsigned index) {
     static constexpr ExtraPatch p2672[] = {EXTRA_SET(BTLEAdvExtra2672)};
     static constexpr ExtraPatch p2673[] = {EXTRA_SET(BTLEAdvExtra2673)};
-    if (build && strcmp(build, "25G332") == 0)
+    if (index == 0)
         return p2672;
-    if (build && strcmp(build, "25G342") == 0)
+    if (index == 1)
         return p2673;
     return nullptr;
 }
@@ -50,12 +50,7 @@ inline bool extraContainsHelper(const uint8_t *page, size_t size, const ExtraPat
             return true;
     return false;
 }
-inline uint32_t applyExtraPatches(const char *build, bool enabled, bool scanning, uint8_t *page, size_t size) {
-    if (!enabled)
-        return 0;
-    const auto *patches = extraPatchSet(build);
-    if (!patches)
-        return 0;
+inline uint32_t applyExtraPatchSet(const ExtraPatch *patches, bool scanning, uint8_t *page, size_t size) {
     // Helpers precede callers. Cached callers are restored if the corresponding
     // helper cannot be established in the same page on this validation pass.
     static constexpr unsigned order[] = {0, 2, 4, 1, 3, 5};
@@ -75,5 +70,12 @@ inline uint32_t applyExtraPatches(const char *build, bool enabled, bool scanning
             changed |= 1U << bit;
     }
     return changed;
+}
+inline uint32_t applyExtraPatches(bool enabled, bool scanning, uint8_t *page, size_t size) {
+    if (!enabled)
+        return 0;
+    // Exact bytes (including RIP-relative displacements) select the build.
+    const auto first = applyExtraPatchSet(extraPatchSet(0), scanning, page, size);
+    return first | applyExtraPatchSet(extraPatchSet(1), scanning, page, size);
 }
 }

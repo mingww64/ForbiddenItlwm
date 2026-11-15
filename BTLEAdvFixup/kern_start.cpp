@@ -14,7 +14,6 @@
 #include "BTLEAdvPatches.hpp"
 #if !defined(BTLEADV_SEQUOIA) && !defined(BTLEADV_SONOMA)
 #include "BTLEAdvExtraPatches.hpp"
-extern "C" char osversion[];
 #endif
 #include "BTLEAdvHci.hpp"
 
@@ -40,7 +39,7 @@ static void patched_cs_validate_page(vnode_t vp, memory_object_t pager, memory_o
     if (patchExtras) {
         // The extra set is intentionally opt-in and only has validated Tahoe tables.
         // The normal four-patch table and unconditional HCI route remain independent.
-        BTLEAdv::applyExtraPatches(osversion, true, patchScanning,
+        BTLEAdv::applyExtraPatches(true, patchScanning,
                                    const_cast<uint8_t *>(static_cast<const uint8_t *>(data)), PAGE_SIZE);
     }
 #endif
